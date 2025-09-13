@@ -1,3 +1,4 @@
+#include "WebSocketClient.h"
 #include "ChatWindow.h"
 #include "MessageWindow.h"
 #include "HotkeyManager.h"
@@ -9,6 +10,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     ChatWindow chat(hInstance, 600, 80, 50, sharedBuffer);
 
     chat.SetMessageWindow(&messages);
+
+
+    auto wsClient = std::make_shared<WebSocketClient>("127.0.0.1", 9001);
+    wsClient->SetOnMessage([&](const std::wstring& msg) {
+        chat.OnExternalMessage(msg, false); // false = received
+    });
+    wsClient->Connect();
+
+    sharedBuffer->AddOnSubmitHandler([&](const std::wstring& text) {
+        wsClient->Send(text);
+    });
+
 
     HotkeyManager hotkeys;
     hotkeys.Register(1, MOD_ALT, 'X'); // toggle chat
@@ -32,4 +45,3 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     }
     return 0;
 }
-

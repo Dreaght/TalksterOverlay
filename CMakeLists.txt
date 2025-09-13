@@ -14,10 +14,12 @@ add_executable(TalksterUnwindowed main.cpp
         MessageWindow.cpp
         MessageWindow.h
         MessageRenderer.cpp
-        MessageRenderer.h)
+        MessageRenderer.h
+        WebSocketClient.cpp
+        WebSocketClient.h)
 
 # Add this line to specify WinMain as the entry point
 set_target_properties(TalksterUnwindowed PROPERTIES WIN32_EXECUTABLE TRUE)
 
 # Link against Direct2D and other Windows libraries
-target_link_libraries(TalksterUnwindowed PRIVATE d2d1 dwrite.lib)
+target_link_libraries(TalksterUnwindowed PRIVATE d2d1 dwrite.lib ws2_32)

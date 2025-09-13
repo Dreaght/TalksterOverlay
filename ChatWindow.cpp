@@ -29,12 +29,13 @@ ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin, s
     // Submit callback
     if (m_buffer) {
         std::weak_ptr<TextBuffer> weakBuffer = m_buffer;
-        m_buffer->SetOnSubmit([this, weakBuffer](const std::wstring& text) {
+        m_buffer->AddOnSubmitHandler([this, weakBuffer](const std::wstring& text) {
             auto buf = weakBuffer.lock();
             if (!buf || text.empty() || m_destroyed) return;
             buf->AddMessage(text, true);
             if (m_textWindow) m_textWindow->Invalidate();
         });
+
     }
 }
 
@@ -74,6 +75,13 @@ void ChatWindow::Hide() {
 
 void ChatWindow::ToggleVisible() {
     m_visible ? Hide() : Show();
+}
+
+void ChatWindow::OnExternalMessage(const std::wstring& msg, bool sent) const {
+    if (m_buffer) {
+        m_buffer->AddMessage(msg, sent);
+        if (m_textWindow) m_textWindow->Invalidate();
+    }
 }
 
 LRESULT CALLBACK ChatWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {

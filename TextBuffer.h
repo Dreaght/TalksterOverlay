@@ -30,8 +30,8 @@ public:
     void ClearMessages() { m_messages.clear(); }
 
     // Submit callback
-    std::function<void(const std::wstring&)> m_onSubmit;
-    void SetOnSubmit(std::function<void(const std::wstring&)> cb) { m_onSubmit = std::move(cb); }
+    std::vector<std::function<void(const std::wstring&)>> m_submitHandlers;
+    void AddOnSubmitHandler(std::function<void(const std::wstring&)> cb);
 
 private:
     std::wstring m_text;

@@ -15,6 +15,8 @@ public:
 
     void SetMessageWindow(MessageWindow* msgWin) { m_textWindow = msgWin; }
 
+    void OnExternalMessage(const std::wstring& msg, bool sent) const;
+
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);

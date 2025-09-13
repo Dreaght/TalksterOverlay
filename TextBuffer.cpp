@@ -39,14 +39,12 @@ void TextBuffer::OnKeyDown(WPARAM wParam) {
         case VK_END:
             m_cursorPos = m_text.size();
             break;
-        case VK_RETURN:
-        {
-            // Store the text somewhere (e.g. pass to callback)
-            if (m_onSubmit && !m_text.empty()) {
-                m_onSubmit(m_text);  // call callback with current text
+        case VK_RETURN: {
+            if (!m_text.empty()) {
+                for (auto &cb : m_submitHandlers) {
+                    cb(m_text);
+                }
             }
-
-            // Clear text after sending
             m_text.clear();
             m_cursorPos = 0;
             m_cursorVisible = true;
@@ -83,6 +81,10 @@ void TextBuffer::OnTimer() {
             ++it;
         }
     }
+}
+
+void TextBuffer::AddOnSubmitHandler(std::function<void(const std::wstring&)> cb) {
+    m_submitHandlers.push_back(std::move(cb));
 }
 
 void TextBuffer::AddMessage(const std::wstring& msg, bool sent) {
