@@ -21,7 +21,7 @@ MessageRenderer::MessageRenderer(HWND hWnd) : m_hWnd(hWnd) {
             DWRITE_FONT_WEIGHT_REGULAR,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
-            20.0f, L"en-us", &m_format)) || !m_format)
+            25.0f, L"en-us", &m_format)) || !m_format)
         throw std::runtime_error("Failed to create text format");
 
     m_format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
@@ -62,27 +62,25 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
 
     m_target->BeginDraw();
 
-    // Fill background with RED (test)
-    m_target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    // Transparent background
+    m_target->Clear(D2D1::ColorF(0, 0));
 
     if (m_brush && m_format) {
         const auto& messages = buffer.GetMessages();
 
-        // Get client size
         RECT rc;
         GetClientRect(m_hWnd, &rc);
         float clientWidth  = static_cast<float>(rc.right - rc.left);
         float clientHeight = static_cast<float>(rc.bottom - rc.top);
 
-        // Compute dynamic line height from font metrics
+        // Compute line height
         ComPtr<IDWriteTextLayout> textLayout;
         if (FAILED(m_dwrite->CreateTextLayout(
                 L"A", 1, m_format,
                 clientWidth, clientHeight,
                 &textLayout))) {
             throw std::runtime_error("Failed to create text layout for metrics");
-                }
-
+        }
         DWRITE_TEXT_METRICS metrics{};
         textLayout->GetMetrics(&metrics);
         float lineHeight = metrics.height;
@@ -90,36 +88,49 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
         // Start from bottom
         float y = clientHeight;
 
-        // Draw messages from bottom to top
+        // Create shadow brush
+        ID2D1SolidColorBrush* shadowBrush = nullptr;
+        m_target->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 0.5f), &shadowBrush);
+
+        const float shadowOffsets[] = { -1.5f, 0.0f, 1.5f };
+
+        // Draw messages bottom-to-top
         for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
             const TimedMessage& msg = *it;
 
-            // Create a text layout for the whole message
             ComPtr<IDWriteTextLayout> layout;
             HRESULT hr = m_dwrite->CreateTextLayout(
                 msg.text.c_str(),
                 static_cast<UINT32>(msg.text.length()),
                 m_format,
-                clientWidth,        // max width
-                clientHeight,       // max height
+                clientWidth,
+                clientHeight,
                 &layout
             );
             if (FAILED(hr) || !layout) continue;
 
-            // Get actual metrics (how tall the layout really is)
             DWRITE_TEXT_METRICS tm{};
             layout->GetMetrics(&tm);
 
-            y -= tm.height;           // move up by the message’s height
+            y -= tm.height;
             if (y < 0) break;
 
-            // Apply alpha
-            m_brush->SetColor(D2D1::ColorF(D2D1::ColorF::White, msg.alpha));
-
-            // Center horizontally
+            // Center align
             layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
 
-            // Draw the full layout (multi-line aware)
+            // --- Draw shadow first ---
+            for (float dx : shadowOffsets) {
+                for (float dy : shadowOffsets) {
+                    m_target->DrawTextLayout(
+                        D2D1::Point2F(dx, y + dy),
+                        layout.Get(),
+                        shadowBrush
+                    );
+                }
+            }
+
+            // --- Draw actual message text ---
+            m_brush->SetColor(D2D1::ColorF(D2D1::ColorF::White, msg.alpha));
             m_target->DrawTextLayout(
                 D2D1::Point2F(0.0f, y),
                 layout.Get(),
@@ -127,7 +138,9 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
             );
         }
 
-        // Reset alignment back to leading
+        if (shadowBrush) shadowBrush->Release();
+
+        // Reset alignment
         m_format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
     }
 
@@ -136,3 +149,4 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
         DiscardResources();
     }
 }
+
