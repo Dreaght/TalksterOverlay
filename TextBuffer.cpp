@@ -42,7 +42,7 @@ void TextBuffer::OnKeyDown(WPARAM wParam) {
         case VK_RETURN:
         {
             // Store the text somewhere (e.g. pass to callback)
-            if (m_onSubmit) {
+            if (m_onSubmit && !m_text.empty()) {
                 m_onSubmit(m_text);  // call callback with current text
             }
 
