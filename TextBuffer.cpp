@@ -60,8 +60,50 @@ void TextBuffer::OnKeyDown(WPARAM wParam) {
 
 void TextBuffer::OnTimer() {
     DWORD now = GetTickCount();
+
+    // Blink cursor
     if (now - m_lastInput >= m_blinkDelay) {
         m_cursorVisible = !m_cursorVisible;
         m_lastInput = now;
     }
+
+    for (auto it = m_messages.begin(); it != m_messages.end();) {
+        DWORD elapsed = now - it->timestamp;
+        DWORD totalLife = it->fullVisible + it->fadeOut;
+
+        if (elapsed >= totalLife) {
+            it = m_messages.erase(it);
+        } else {
+            if (elapsed < it->fullVisible) {
+                it->alpha = 1.0f;
+            } else {
+                float t = float(elapsed - it->fullVisible) / float(it->fadeOut);
+                it->alpha = 1.0f - t;
+            }
+            ++it;
+        }
+    }
 }
+
+
+void TextBuffer::AddMessage(const std::wstring& msg) {
+    TimedMessage m;
+    m.text = msg;
+    m.timestamp = GetTickCount();
+    m.alpha = 1.0f;
+
+    // --- lifetime scaling ---
+    const DWORD baseFullVisible = 1000; // minimum ms fully visible
+    const DWORD perCharExtra    = 50;   // add ms per character
+    const DWORD maxFullVisible  = 5000; // cap (optional)
+    const DWORD fadeOut         = 2000; // always 2s fade
+
+    DWORD visibleTime = baseFullVisible + (DWORD)msg.size() * perCharExtra;
+    if (visibleTime > maxFullVisible) visibleTime = maxFullVisible;
+
+    m.fullVisible = visibleTime;
+    m.fadeOut     = fadeOut;
+
+    m_messages.push_back(std::move(m));
+}
+

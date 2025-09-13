@@ -4,6 +4,15 @@
 #include <windows.h>
 #include <functional>
 
+struct TimedMessage {
+    std::wstring text;
+    DWORD timestamp;   // when added
+    float alpha;       // 0..1
+    DWORD fullVisible; // ms fully opaque
+    DWORD fadeOut;     // ms fade duration
+};
+
+
 class TextBuffer {
 public:
     void OnChar(WPARAM wParam);
@@ -16,12 +25,8 @@ public:
     bool IsCursorVisible() const { return m_cursorVisible; }
 
     // Messages management
-    void AddMessage(const std::wstring& msg) { m_messages.push_back(msg); }
-    void RemoveMessage(size_t index) {
-        if (index < m_messages.size())
-            m_messages.erase(m_messages.begin() + index);
-    }
-    const std::vector<std::wstring>& GetMessages() const { return m_messages; }
+    void AddMessage(const std::wstring& msg);
+    const std::vector<TimedMessage>& GetMessages() const { return m_messages; }
     void ClearMessages() { m_messages.clear(); }
 
     // Submit callback
@@ -36,5 +41,5 @@ private:
     const DWORD m_blinkDelay{500};
 
     // Temporary messages
-    std::vector<std::wstring> m_messages;
+    std::vector<TimedMessage> m_messages;
 };

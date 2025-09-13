@@ -45,7 +45,8 @@ void ChatWindow::UpdateMessageWindowPosition() const {
     int msgWidth  = 600; // same as MessageWindow width
     int msgHeight = 200; // same as MessageWindow height
     int x = chatRect.left + (chatRect.right - chatRect.left - msgWidth) / 2;
-    int y = m_visible ? (chatRect.top - msgHeight) : chatRect.top - (msgHeight / 2);
+    // int y = m_visible ? (chatRect.top - msgHeight) : chatRect.top - (msgHeight / 2);
+    int y = chatRect.top - msgHeight;
 
     SetWindowPos(m_textWindow->GetHWND(), HWND_TOPMOST, x, y, msgWidth, msgHeight,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);

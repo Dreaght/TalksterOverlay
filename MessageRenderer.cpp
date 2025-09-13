@@ -63,7 +63,7 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
     m_target->BeginDraw();
 
     // Fill background with RED (test)
-    m_target->Clear(D2D1::ColorF(D2D1::ColorF::Red));
+    m_target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
 
     if (m_brush && m_format) {
         const auto& messages = buffer.GetMessages();
@@ -92,21 +92,37 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
 
         // Draw messages from bottom to top
         for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
-            const std::wstring& msg = *it;
+            const TimedMessage& msg = *it;
 
-            y -= lineHeight;
-            if (y < 0) break; // stop if we reach top
+            // Create a text layout for the whole message
+            ComPtr<IDWriteTextLayout> layout;
+            HRESULT hr = m_dwrite->CreateTextLayout(
+                msg.text.c_str(),
+                static_cast<UINT32>(msg.text.length()),
+                m_format,
+                clientWidth,        // max width
+                clientHeight,       // max height
+                &layout
+            );
+            if (FAILED(hr) || !layout) continue;
 
-            D2D1_RECT_F layout = D2D1::RectF(0.0f, y, clientWidth, y + lineHeight);
+            // Get actual metrics (how tall the layout really is)
+            DWRITE_TEXT_METRICS tm{};
+            layout->GetMetrics(&tm);
+
+            y -= tm.height;           // move up by the message’s height
+            if (y < 0) break;
+
+            // Apply alpha
+            m_brush->SetColor(D2D1::ColorF(D2D1::ColorF::White, msg.alpha));
 
             // Center horizontally
-            m_format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
 
-            m_target->DrawText(
-                msg.c_str(),
-                static_cast<UINT32>(msg.length()),
-                m_format,
-                &layout,
+            // Draw the full layout (multi-line aware)
+            m_target->DrawTextLayout(
+                D2D1::Point2F(0.0f, y),
+                layout.Get(),
                 m_brush
             );
         }

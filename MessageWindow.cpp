@@ -45,8 +45,12 @@ void MessageWindow::Show() {
     if (m_hWnd) {
         ShowWindow(m_hWnd, SW_SHOW);
         UpdateWindow(m_hWnd);
+
+        // ~30 FPS = 33 ms per tick
+        SetTimer(m_hWnd, 1, 33, nullptr);
     }
 }
+
 
 void MessageWindow::Invalidate() {
     if (m_hWnd) {
@@ -69,6 +73,13 @@ LRESULT CALLBACK MessageWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 LRESULT MessageWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_TIMER:
+            if (m_buffer) {
+                m_buffer->OnTimer();      // update lifetimes & alpha
+                Invalidate();             // schedule repaint
+            }
+            return 0;
+
         case WM_PAINT: {
             PAINTSTRUCT ps;
             BeginPaint(m_hWnd, &ps);
@@ -80,9 +91,12 @@ LRESULT MessageWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             EndPaint(m_hWnd, &ps);
             return 0;
         }
+
         case WM_DESTROY:
+            KillTimer(m_hWnd, 1);  // stop timer
             PostQuitMessage(0);
             return 0;
     }
     return DefWindowProc(m_hWnd, msg, wParam, lParam);
 }
+
