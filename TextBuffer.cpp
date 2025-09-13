@@ -2,9 +2,13 @@
 
 void TextBuffer::OnChar(WPARAM wParam) {
     wchar_t ch = static_cast<wchar_t>(wParam);
+    const size_t maxLength = 165; // set your limit here
+
     if (ch >= 32 && ch != 127) { // printable
-        m_text.insert(m_cursorPos, 1, ch);
-        m_cursorPos++;
+        if (m_text.size() < maxLength) { // only insert if under limit
+            m_text.insert(m_cursorPos, 1, ch);
+            m_cursorPos++;
+        }
         m_cursorVisible = true;
         m_lastInput = GetTickCount();
     }
