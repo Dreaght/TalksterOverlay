@@ -65,14 +65,10 @@ void Renderer::Paint(const TextBuffer& buffer) {
         static_cast<FLOAT>(rc.right), static_cast<FLOAT>(rc.bottom));
 
     std::wstring text = buffer.GetText();
-    if (buffer.IsCursorVisible()) {
-        text.insert(buffer.GetCursorPos(), L"|");
-    }
 
-    // Drop shadow
+    // Draw shadow first
     ID2D1SolidColorBrush* shadowBrush = nullptr;
     m_target->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 0.5f), &shadowBrush);
-
     const float shadowOffsets[] = { -1.5f, 0.0f, 1.5f };
     for (float dx : shadowOffsets) {
         for (float dy : shadowOffsets) {
@@ -80,7 +76,7 @@ void Renderer::Paint(const TextBuffer& buffer) {
                 layout.left + dx, layout.top + dy,
                 layout.right + dx, layout.bottom + dy);
             m_target->DrawText(
-            text.c_str(),
+                text.c_str(),
                 static_cast<UINT32>(text.length()),
                 m_format,
                 shadowRect,
@@ -89,15 +85,45 @@ void Renderer::Paint(const TextBuffer& buffer) {
         }
     }
 
-    // Actual text
+    // Draw actual text
     m_brush->SetColor(D2D1::ColorF(D2D1::ColorF::White));
     m_target->DrawText(
-    text.c_str(),
+        text.c_str(),
         static_cast<UINT32>(text.length()),
         m_format,
         layout,
         m_brush
     );
+
+    // Draw real cursor
+    if (buffer.IsCursorVisible()) {
+        IDWriteTextLayout* textLayout = nullptr;
+        m_dwrite->CreateTextLayout(
+            text.c_str(),
+            static_cast<UINT32>(text.length()),
+            m_format,
+            rc.right - rc.left,
+            rc.bottom - rc.top,
+            &textLayout
+        );
+
+        DWRITE_TEXT_METRICS metrics{};
+        textLayout->GetMetrics(&metrics);
+
+        DWRITE_HIT_TEST_METRICS hitTest{};
+        FLOAT cursorX = 0.0f;
+        FLOAT cursorY = 0.0f;
+        FLOAT cursorHeight = 0.0f;
+
+        if (SUCCEEDED(textLayout->HitTestTextPosition(buffer.GetCursorPos(), FALSE, &cursorX, &cursorY, &hitTest))) {
+            cursorHeight = hitTest.height;
+            D2D1_POINT_2F p1 = D2D1::Point2F(layout.left + cursorX, layout.top + cursorY);
+            D2D1_POINT_2F p2 = D2D1::Point2F(layout.left + cursorX, layout.top + cursorY + cursorHeight);
+            m_target->DrawLine(p1, p2, m_brush, 2.0f); // 2px width cursor
+        }
+
+        if (textLayout) textLayout->Release();
+    }
 
     if (shadowBrush) shadowBrush->Release();
 
@@ -106,3 +132,4 @@ void Renderer::Paint(const TextBuffer& buffer) {
         DiscardResources();
     }
 }
+
