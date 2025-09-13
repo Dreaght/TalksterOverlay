@@ -10,8 +10,8 @@ struct TimedMessage {
     float alpha;       // 0..1
     DWORD fullVisible; // ms fully opaque
     DWORD fadeOut;     // ms fade duration
+    bool sent;         // true = sent by me, false = received
 };
-
 
 class TextBuffer {
 public:
@@ -25,7 +25,7 @@ public:
     bool IsCursorVisible() const { return m_cursorVisible; }
 
     // Messages management
-    void AddMessage(const std::wstring& msg);
+    void AddMessage(const std::wstring &msg, bool sent);
     const std::vector<TimedMessage>& GetMessages() const { return m_messages; }
     void ClearMessages() { m_messages.clear(); }
 

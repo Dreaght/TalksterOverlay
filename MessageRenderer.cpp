@@ -112,31 +112,67 @@ void MessageRenderer::Paint(const TextBuffer& buffer) {
             DWRITE_TEXT_METRICS tm{};
             layout->GetMetrics(&tm);
 
-            y -= tm.height;
+            // Line advance
+            float paddingX = 10.0f;
+            float paddingY = 6.0f;
+            float bubbleWidth  = tm.width  + paddingX * 2;
+            float bubbleHeight = tm.height + paddingY * 2;
+
+            y -= bubbleHeight + 4.0f; // add vertical spacing between bubbles
             if (y < 0) break;
 
-            // Center align
-            layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            // Compute bubble X position
+            float x = msg.sent
+                ? clientWidth - bubbleWidth - 10.0f // right aligned
+                : 10.0f;                             // left aligned
 
-            // --- Draw shadow first ---
+            // Bubble rectangle
+            D2D1_ROUNDED_RECT bubble = D2D1::RoundedRect(
+                D2D1::RectF(x, y, x + bubbleWidth, y + bubbleHeight),
+                12.0f, 12.0f // rounded corners
+            );
+
+            // Bubble brush
+            ID2D1SolidColorBrush* bubbleBrush = nullptr;
+            if (msg.sent) {
+                m_target->CreateSolidColorBrush(
+                    D2D1::ColorF(0.2f, 0.6f, 1.0f, msg.alpha), &bubbleBrush); // blue
+            } else {
+                m_target->CreateSolidColorBrush(
+                    D2D1::ColorF(0.3f, 0.3f, 0.3f, msg.alpha), &bubbleBrush); // gray
+            }
+
+            if (bubbleBrush) {
+                m_target->DrawRoundedRectangle(bubble, bubbleBrush);
+                bubbleBrush->Release();
+            }
+
+            // Text alignment for layout
+            layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+
+            // --- Draw shadowed text inside bubble ---
+            float textX = x + paddingX;
+            float textY = y + paddingY;
+
             for (float dx : shadowOffsets) {
                 for (float dy : shadowOffsets) {
                     m_target->DrawTextLayout(
-                        D2D1::Point2F(dx, y + dy),
+                        D2D1::Point2F(textX + dx, textY + dy),
                         layout.Get(),
                         shadowBrush
                     );
                 }
             }
 
-            // --- Draw actual message text ---
+            // Actual text
             m_brush->SetColor(D2D1::ColorF(D2D1::ColorF::White, msg.alpha));
             m_target->DrawTextLayout(
-                D2D1::Point2F(0.0f, y),
+                D2D1::Point2F(textX, textY),
                 layout.Get(),
                 m_brush
             );
         }
+
 
         if (shadowBrush) shadowBrush->Release();
 

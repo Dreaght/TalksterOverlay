@@ -32,7 +32,7 @@ ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin, s
         m_buffer->SetOnSubmit([this, weakBuffer](const std::wstring& text) {
             auto buf = weakBuffer.lock();
             if (!buf || text.empty() || m_destroyed) return;
-            buf->AddMessage(text);
+            buf->AddMessage(text, true);
             if (m_textWindow) m_textWindow->Invalidate();
         });
     }

@@ -85,17 +85,17 @@ void TextBuffer::OnTimer() {
     }
 }
 
-
-void TextBuffer::AddMessage(const std::wstring& msg) {
+void TextBuffer::AddMessage(const std::wstring& msg, bool sent) {
     TimedMessage m;
     m.text = msg;
     m.timestamp = GetTickCount();
     m.alpha = 1.0f;
+    m.sent = sent;
 
     // --- lifetime scaling ---
     const DWORD baseFullVisible = 1000; // minimum ms fully visible
     const DWORD perCharExtra    = 50;   // add ms per character
-    const DWORD maxFullVisible  = 5000; // cap (optional)
+    const DWORD maxFullVisible  = 5000; // cap
     const DWORD fadeOut         = 2000; // always 2s fade
 
     DWORD visibleTime = baseFullVisible + (DWORD)msg.size() * perCharExtra;
@@ -106,4 +106,3 @@ void TextBuffer::AddMessage(const std::wstring& msg) {
 
     m_messages.push_back(std::move(m));
 }
-
