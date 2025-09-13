@@ -89,11 +89,15 @@ LRESULT ChatWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             InvalidateRect(m_hWnd, nullptr, TRUE);
             return 0;
 
+        case WM_KILLFOCUS:
+            Hide();
+            return 0;
+
         case WM_DESTROY:
-            // Clean up timer
             KillTimer(m_hWnd, 1);
             PostQuitMessage(0);
             return 0;
     }
     return DefWindowProc(m_hWnd, msg, wParam, lParam);
 }
+
