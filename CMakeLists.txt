@@ -10,7 +10,11 @@ add_executable(TalksterUnwindowed main.cpp
         TextBuffer.h
         HotkeyManager.h
         Renderer.cpp
-        TextBuffer.cpp)
+        TextBuffer.cpp
+        MessageWindow.cpp
+        MessageWindow.h
+        MessageRenderer.cpp
+        MessageRenderer.h)
 
 # Add this line to specify WinMain as the entry point
 set_target_properties(TalksterUnwindowed PROPERTIES WIN32_EXECUTABLE TRUE)

@@ -1,6 +1,11 @@
 #include "ChatWindow.h"
 
-ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin) {
+#include <stdexcept>
+#include <utility>
+
+ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin, std::shared_ptr<TextBuffer> sharedBuffer)
+    : m_buffer(std::move(sharedBuffer))
+{
     const char* CLASS_NAME = "ChatOverlay";
     WNDCLASS wc{};
     wc.lpfnWndProc = WndProc;
@@ -10,7 +15,6 @@ ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin) {
 
     RECT screen;
     SystemParametersInfo(SPI_GETWORKAREA, 0, &screen, 0);
-
     int x = (screen.right - screen.left - width) / 2;
     int y = screen.bottom - height - margin;
 
@@ -19,35 +23,52 @@ ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin) {
         CLASS_NAME, "Chat Overlay", WS_POPUP,
         x, y, width, height, nullptr, nullptr, hInstance, this);
 
-    // Make black transparent
     SetLayeredWindowAttributes(m_hWnd, RGB(0,0,0), 0, LWA_COLORKEY);
-
     m_renderer = std::make_unique<Renderer>(m_hWnd);
 
-    // 🔑 Register submit callback
-    m_buffer.SetOnSubmit([this](const std::wstring& text) {
-        // For now just debug-print the sent message
-        OutputDebugStringW((L"Sent message: " + text + L"\n").c_str());
-
-        // Later you can send it to your message list / network here
-    });
+    // Submit callback
+    if (m_buffer) {
+        std::weak_ptr<TextBuffer> weakBuffer = m_buffer;
+        m_buffer->SetOnSubmit([this, weakBuffer](const std::wstring& text) {
+            auto buf = weakBuffer.lock();
+            if (!buf || text.empty() || m_destroyed) return;
+            buf->AddMessage(text);
+            if (m_textWindow) m_textWindow->Invalidate();
+        });
+    }
 }
 
+void ChatWindow::UpdateMessageWindowPosition() const {
+    RECT chatRect;
+    GetWindowRect(m_hWnd, &chatRect);
+
+    int msgWidth  = 600; // same as MessageWindow width
+    int msgHeight = 200; // same as MessageWindow height
+    int x = chatRect.left + (chatRect.right - chatRect.left - msgWidth) / 2;
+    int y = m_visible ? (chatRect.top - msgHeight) : chatRect.top - (msgHeight / 2);
+
+    SetWindowPos(m_textWindow->GetHWND(), HWND_TOPMOST, x, y, msgWidth, msgHeight,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+}
+
+
 void ChatWindow::Show() {
+    if (!m_hWnd) return;
     m_visible = true;
     ShowWindow(m_hWnd, SW_SHOW);
     SetForegroundWindow(m_hWnd);
+    SetTimer(m_hWnd, 1, 500, nullptr); // cursor blink
 
-    // Start blinking cursor timer (500 ms)
-    SetTimer(m_hWnd, 1, 500, nullptr);
+    UpdateMessageWindowPosition();
 }
 
 void ChatWindow::Hide() {
+    if (!m_hWnd) return;
     m_visible = false;
     ShowWindow(m_hWnd, SW_HIDE);
-
-    // Stop timer when hidden
     KillTimer(m_hWnd, 1);
+
+    UpdateMessageWindowPosition();
 }
 
 void ChatWindow::ToggleVisible() {
@@ -55,7 +76,7 @@ void ChatWindow::ToggleVisible() {
 }
 
 LRESULT CALLBACK ChatWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    ChatWindow* self;
+    ChatWindow* self = nullptr;
     if (msg == WM_NCCREATE) {
         CREATESTRUCT* cs = (CREATESTRUCT*)lParam;
         self = (ChatWindow*)cs->lpCreateParams;
@@ -68,24 +89,26 @@ LRESULT CALLBACK ChatWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
 }
 
 LRESULT ChatWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (m_destroyed) return 0;
+
     switch (msg) {
         case WM_PAINT:
-            m_renderer->Paint(m_buffer);
+            if (m_renderer && m_buffer) m_renderer->Paint(*m_buffer);
             ValidateRect(m_hWnd, nullptr);
             return 0;
 
         case WM_CHAR:
-            m_buffer.OnChar(wParam);
+            if (m_buffer) m_buffer->OnChar(wParam);
             InvalidateRect(m_hWnd, nullptr, TRUE);
             return 0;
 
         case WM_KEYDOWN:
-            m_buffer.OnKeyDown(wParam);
+            if (m_buffer) m_buffer->OnKeyDown(wParam);
             InvalidateRect(m_hWnd, nullptr, TRUE);
             return 0;
 
         case WM_TIMER:
-            m_buffer.OnTimer();
+            if (m_buffer) m_buffer->OnTimer();
             InvalidateRect(m_hWnd, nullptr, TRUE);
             return 0;
 
@@ -94,10 +117,9 @@ LRESULT ChatWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
 
         case WM_DESTROY:
+            m_destroyed = true;
             KillTimer(m_hWnd, 1);
-            PostQuitMessage(0);
             return 0;
     }
     return DefWindowProc(m_hWnd, msg, wParam, lParam);
 }
-
