@@ -31,18 +31,31 @@ std::string MatrixClient::ExtractJsonValue(const std::string& json, const std::s
     return json.substr(pos, end - pos);
 }
 
+inline void ShowInfo(const std::wstring& title, const std::wstring& msg) {
+    MessageBoxW(NULL, msg.c_str(), title.c_str(), MB_ICONINFORMATION | MB_OK);
+}
+
+void MatrixClient::SetOnLogin(LoginCallback cb) {
+    onLogin_ = std::move(cb);
+}
+
 // ------------------ Async SSO Login ------------------
 std::future<bool> MatrixClient::LoginWithSSOAsync() {
     return std::async(std::launch::async, [this]() -> bool {
+        ShowInfo(L"Login", L"Starting SSO login...");
+
         auto tokenOpt = RunLocalSSOListener();
         if (!tokenOpt) {
             ShowError(L"SSO Error", L"Failed to receive SSO login token.");
             return false;
         }
 
+        ShowInfo(L"Login", L"Got login token, exchanging for access token...");
+
         std::string loginToken = *tokenOpt;
         std::string body = "{\"type\":\"m.login.token\",\"token\":\"" + loginToken + "\"}";
         auto resp = HttpRequest(L"POST", L"/_matrix/client/r0/login", body);
+
         if (resp.empty()) {
             ShowError(L"Login Error", L"Failed to exchange token for access token.");
             return false;
@@ -50,31 +63,60 @@ std::future<bool> MatrixClient::LoginWithSSOAsync() {
 
         m_accessToken = ExtractJsonValue(resp, "access_token");
         m_userId = ExtractJsonValue(resp, "user_id");
+
         if (m_accessToken.empty()) {
             ShowError(L"Login Error", L"Access token not found in response.");
             return false;
         }
+
+        ShowInfo(L"Login", L"Login successful. User ID: " + std::wstring(m_userId.begin(), m_userId.end()));
         return true;
     });
 }
 
 std::future<bool> MatrixClient::LoginWithSSOAndRandomRoomAsync() {
     return std::async(std::launch::async, [this]() -> bool {
-        if (!LoginWithSSOAsync().get()) return false;
+        ShowInfo(L"Login", L"Starting SSO login + room join...");
 
-        std::string randomRoomAlias = "room_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-        std::string createBody = "{\"room_alias_name\":\"" + randomRoomAlias + "\", \"visibility\":\"private\"}";
+        // Step 1: Perform SSO login
+        if (!LoginWithSSOAsync().get()) {
+            if (onLogin_) onLogin_(false); // notify failure
+            return false;
+        }
+
+        ShowInfo(L"Login", L"Creating or joining a random room...");
+
+        // Step 2: Generate random alias
+        std::string randomRoomAlias =
+            "room_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+
+        // Step 3: Create room
+        std::string createBody =
+            "{\"room_alias_name\":\"" + randomRoomAlias + "\", \"visibility\":\"private\"}";
         auto createResp = HttpRequest(L"POST", L"/_matrix/client/r0/createRoom", createBody, true);
 
         std::string roomId = ExtractJsonValue(createResp, "room_id");
+
+        bool ok = false;
         if (roomId.empty()) {
-            JoinRoom("#" + randomRoomAlias + ":matrix.org");
+            ShowInfo(L"Login", L"Room creation failed, trying to join alias instead.");
+            ok = JoinRoom("#" + randomRoomAlias + ":matrix.org");
         } else {
-            JoinRoom(roomId);
+            ShowInfo(L"Login",
+                     L"Room created. Joining room ID: " + std::wstring(roomId.begin(), roomId.end()));
+            ok = JoinRoom(roomId);
+            m_currentRoomId = roomId.empty() ? "#" + randomRoomAlias + ":matrix.org" : roomId;
         }
-        return true;
+
+        // Step 4: Fire callback
+        if (onLogin_) {
+            onLogin_(ok);
+        }
+
+        return ok;
     });
 }
+
 
 // ------------------ Join / Send ------------------
 bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
@@ -90,17 +132,24 @@ bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
 
 void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string& text) {
     std::thread([this, roomId, text]() {
+        // ShowInfo(L"SendMessageAsync", L"Preparing to send message to room: " + std::wstring(roomId.begin(), roomId.end()));
+
         std::string txnId = std::to_string(::GetTickCount64());
         std::wstring path = L"/_matrix/client/r0/rooms/" +
             std::wstring(roomId.begin(), roomId.end()) +
             L"/send/m.room.message/" +
             std::wstring(txnId.begin(), txnId.end());
 
+        // ShowInfo(L"SendMessageAsync", L"HTTP PUT path: " + path);
+
         std::string body = "{\"msgtype\":\"m.text\",\"body\":\"" + text + "\"}";
         auto resp = HttpRequest(L"PUT", path, body, true);
+
         if (resp.empty()) {
             ShowError(L"Send Message Error", L"Failed to send message to room: " +
                       std::wstring(roomId.begin(), roomId.end()));
+        } else {
+            // ShowInfo(L"SendMessageAsync", L"Message sent successfully: " + std::wstring(text.begin(), text.end()));
         }
     }).detach();
 }
@@ -212,6 +261,8 @@ std::string MatrixClient::HttpRequest(const std::wstring& method,
 
 // ------------------ Local SSO Listener ------------------
 std::optional<std::string> MatrixClient::RunLocalSSOListener() {
+    ShowInfo(L"SSO", L"Starting local listener at http://localhost:8000 ...");
+
     ::WSADATA wsaData;
     if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) { ShowError(L"WSA Error", L"Failed to initialize Winsock."); return {}; }
 
@@ -235,11 +286,15 @@ std::optional<std::string> MatrixClient::RunLocalSSOListener() {
         return {};
     }
 
-    std::wstring url = m_homeserver + L"/_matrix/client/r0/login/sso/redirect?redirectUrl=http://localhost:8000";
+    std::wstring url = L"https://" + m_homeserver +
+    L"/_matrix/client/r0/login/sso/redirect?redirectUrl=http://localhost:8000";
+    ShowInfo(L"SSO", L"Opening browser for login: " + url);
     ::ShellExecuteW(NULL, L"open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 
     ::SOCKET clientSock = ::accept(listenSock, nullptr, nullptr);
     if (clientSock == INVALID_SOCKET) { ::closesocket(listenSock); ::WSACleanup(); ShowError(L"Accept Error", L"Failed to accept incoming connection."); return {}; }
+
+    ShowInfo(L"SSO", L"Received callback from browser. Extracting token...");
 
     char buffer[2048];
     int received = ::recv(clientSock, buffer, sizeof(buffer) - 1, 0);
@@ -252,6 +307,8 @@ std::optional<std::string> MatrixClient::RunLocalSSOListener() {
     tokenPos += 11;
     auto endPos = request.find(' ', tokenPos);
     std::string loginToken = request.substr(tokenPos, endPos - tokenPos);
+
+    ShowInfo(L"SSO", L"Got loginToken: " + std::wstring(loginToken.begin(), loginToken.end()));
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Login successful! You can close this window.</h1>";
     ::send(clientSock, response.c_str(), response.size(), 0);

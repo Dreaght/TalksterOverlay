@@ -16,6 +16,10 @@ public:
     MatrixClient(const std::wstring& homeserver);
     ~MatrixClient();
 
+    using LoginCallback = std::function<void(bool)>;
+
+    void SetOnLogin(LoginCallback cb);
+
     // Async SSO login
     std::future<bool> LoginWithSSOAsync();
 
@@ -32,6 +36,8 @@ public:
         m_onMessage = callback;
     }
 
+    std::string m_currentRoomId;
+
 private:
     void SyncLoop();
     void SyncOnce();
@@ -43,9 +49,13 @@ private:
     std::string ExtractJsonValue(const std::string& json, const std::string& key);
 
 private:
+    LoginCallback onLogin_;
+
     std::wstring m_homeserver;
     std::string m_accessToken;
     std::string m_userId;
+
+
 
     std::function<void(const std::string&, const std::string&)> m_onMessage;
 
