@@ -1,8 +1,8 @@
 #pragma once
 #include <windows.h>
 #include <memory>
-#include "TextBuffer.h"
-#include "Renderer.h"
+#include "../TextBuffer.h"
+#include "../renderer/Renderer.h"
 #include "MessageWindow.h"
 
 class ChatWindow {

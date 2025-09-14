@@ -2,7 +2,7 @@
 #include <d2d1.h>
 #include <dwrite.h>
 #include <string>
-#include "TextBuffer.h"
+#include "../TextBuffer.h"
 
 class Renderer {
 public:

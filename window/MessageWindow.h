@@ -2,9 +2,8 @@
 #include <windows.h>
 #include <memory>
 
-#include "MessageRenderer.h"
-#include "Renderer.h"
-#include "TextBuffer.h"
+#include "../renderer/MessageRenderer.h"
+#include "../TextBuffer.h"
 
 class MessageWindow {
 public:

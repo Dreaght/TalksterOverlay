@@ -4,19 +4,23 @@ project(TalksterUnwindowed)
 set(CMAKE_CXX_STANDARD 26)
 
 add_executable(TalksterUnwindowed main.cpp
-        ChatWindow.cpp
-        ChatWindow.h
-        Renderer.h
+        window/ChatWindow.cpp
+        window/ChatWindow.h
+        renderer/Renderer.h
         TextBuffer.h
         HotkeyManager.h
-        Renderer.cpp
+        renderer/Renderer.cpp
         TextBuffer.cpp
-        MessageWindow.cpp
-        MessageWindow.h
-        MessageRenderer.cpp
-        MessageRenderer.h
-        WebSocketClient.cpp
-        WebSocketClient.h)
+        window/MessageWindow.cpp
+        window/MessageWindow.h
+        renderer/MessageRenderer.cpp
+        renderer/MessageRenderer.h
+        client/WebSocketClient.cpp
+        client/WebSocketClient.h
+        client/MatrixClient.cpp
+        client/MatrixClient.h)
+
+target_include_directories(TalksterUnwindowed PRIVATE ${CMAKE_SOURCE_DIR}/external)
 
 # Add this line to specify WinMain as the entry point
 set_target_properties(TalksterUnwindowed PROPERTIES WIN32_EXECUTABLE TRUE)
