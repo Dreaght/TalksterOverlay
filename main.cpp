@@ -48,7 +48,6 @@ void SetupMessageSending(std::shared_ptr<TextBuffer>& sharedBuffer, MatrixClient
     });
 }
 
-
 // -------------------- WinMain --------------------
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     auto sharedBuffer = std::make_shared<TextBuffer>();

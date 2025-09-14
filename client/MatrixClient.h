@@ -20,6 +20,8 @@ public:
 
     void SetOnLogin(LoginCallback cb);
 
+    bool PerformLogin();
+
     // Async SSO login
     std::future<bool> LoginWithSSOAsync();
 

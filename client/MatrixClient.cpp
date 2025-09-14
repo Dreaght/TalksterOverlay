@@ -39,83 +39,89 @@ void MatrixClient::SetOnLogin(LoginCallback cb) {
     onLogin_ = std::move(cb);
 }
 
+// ------------------ Helper: SSO login + callback ------------------
+bool MatrixClient::PerformLogin() {
+    ShowInfo(L"Login", L"Starting SSO login...");
+
+    auto tokenOpt = RunLocalSSOListener();
+    if (!tokenOpt) {
+        ShowError(L"SSO Error", L"Failed to receive SSO login token.");
+        if (onLogin_) onLogin_(false);
+        return false;
+    }
+
+    ShowInfo(L"Login", L"Got login token, exchanging for access token...");
+
+    std::string loginToken = *tokenOpt;
+    std::string body = "{\"type\":\"m.login.token\",\"token\":\"" + loginToken + "\"}";
+    auto resp = HttpRequest(L"POST", L"/_matrix/client/r0/login", body);
+
+    if (resp.empty()) {
+        ShowError(L"Login Error", L"Failed to exchange token for access token.");
+        if (onLogin_) onLogin_(false);
+        return false;
+    }
+
+    m_accessToken = ExtractJsonValue(resp, "access_token");
+    m_userId = ExtractJsonValue(resp, "user_id");
+
+    if (m_accessToken.empty()) {
+        ShowError(L"Login Error", L"Access token not found in response.");
+        if (onLogin_) onLogin_(false);
+        return false;
+    }
+
+    ShowInfo(L"Login", L"Login successful. User ID: " + std::wstring(m_userId.begin(), m_userId.end()));
+
+    // Fire callback for regular login (without room)
+    if (onLogin_) onLogin_(true);
+
+    return true;
+}
+
 // ------------------ Async SSO Login ------------------
 std::future<bool> MatrixClient::LoginWithSSOAsync() {
     return std::async(std::launch::async, [this]() -> bool {
-        ShowInfo(L"Login", L"Starting SSO login...");
-
-        auto tokenOpt = RunLocalSSOListener();
-        if (!tokenOpt) {
-            ShowError(L"SSO Error", L"Failed to receive SSO login token.");
-            return false;
-        }
-
-        ShowInfo(L"Login", L"Got login token, exchanging for access token...");
-
-        std::string loginToken = *tokenOpt;
-        std::string body = "{\"type\":\"m.login.token\",\"token\":\"" + loginToken + "\"}";
-        auto resp = HttpRequest(L"POST", L"/_matrix/client/r0/login", body);
-
-        if (resp.empty()) {
-            ShowError(L"Login Error", L"Failed to exchange token for access token.");
-            return false;
-        }
-
-        m_accessToken = ExtractJsonValue(resp, "access_token");
-        m_userId = ExtractJsonValue(resp, "user_id");
-
-        if (m_accessToken.empty()) {
-            ShowError(L"Login Error", L"Access token not found in response.");
-            return false;
-        }
-
-        ShowInfo(L"Login", L"Login successful. User ID: " + std::wstring(m_userId.begin(), m_userId.end()));
-        return true;
+        return PerformLogin(); // only login + callback
     });
 }
 
+// ------------------ Async SSO Login + Room ------------------
 std::future<bool> MatrixClient::LoginWithSSOAndRandomRoomAsync() {
     return std::async(std::launch::async, [this]() -> bool {
         ShowInfo(L"Login", L"Starting SSO login + room join...");
 
-        // Step 1: Perform SSO login
-        if (!LoginWithSSOAsync().get()) {
-            if (onLogin_) onLogin_(false); // notify failure
-            return false;
-        }
+        if (!PerformLogin()) return false; // login + callback already done
 
         ShowInfo(L"Login", L"Creating or joining a random room...");
 
-        // Step 2: Generate random alias
         std::string randomRoomAlias =
             "room_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 
-        // Step 3: Create room
         std::string createBody =
             "{\"room_alias_name\":\"" + randomRoomAlias + "\", \"visibility\":\"private\"}";
         auto createResp = HttpRequest(L"POST", L"/_matrix/client/r0/createRoom", createBody, true);
 
         std::string roomId = ExtractJsonValue(createResp, "room_id");
+        bool joined = false;
 
-        bool ok = false;
         if (roomId.empty()) {
             ShowInfo(L"Login", L"Room creation failed, trying to join alias instead.");
-            ok = JoinRoom("#" + randomRoomAlias + ":matrix.org");
+            joined = JoinRoom("#" + randomRoomAlias + ":matrix.org");
+            m_currentRoomId = "#" + randomRoomAlias + ":matrix.org";
         } else {
-            ShowInfo(L"Login",
-                     L"Room created. Joining room ID: " + std::wstring(roomId.begin(), roomId.end()));
-            ok = JoinRoom(roomId);
-            m_currentRoomId = roomId.empty() ? "#" + randomRoomAlias + ":matrix.org" : roomId;
+            ShowInfo(L"Login", L"Room created. Joining room ID: " + std::wstring(roomId.begin(), roomId.end()));
+            joined = JoinRoom(roomId);
+            m_currentRoomId = roomId;
         }
 
-        // Step 4: Fire callback
-        if (onLogin_) {
-            onLogin_(ok);
-        }
+        // Fire callback again to notify the user about room join result
+        if (onLogin_) onLogin_(joined);
 
-        return ok;
+        return joined;
     });
 }
+
 
 
 // ------------------ Join / Send ------------------
