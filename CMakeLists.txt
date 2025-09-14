@@ -18,9 +18,14 @@ add_executable(TalksterUnwindowed main.cpp
         client/WebSocketClient.cpp
         client/WebSocketClient.h
         client/MatrixClient.cpp
-        client/MatrixClient.h)
+        client/MatrixClient.h
+        Utils.h)
 
-target_include_directories(TalksterUnwindowed PRIVATE ${CMAKE_SOURCE_DIR}/external)
+target_include_directories(TalksterUnwindowed PRIVATE
+        ${CMAKE_SOURCE_DIR}/external
+        ${CMAKE_SOURCE_DIR}/external/nlohmann
+)
+
 
 # Add this line to specify WinMain as the entry point
 set_target_properties(TalksterUnwindowed PROPERTIES WIN32_EXECUTABLE TRUE)

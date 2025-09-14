@@ -12,6 +12,9 @@
 #undef SendMessage
 
 class MatrixClient {
+
+    std::string m_nextBatch;
+
 public:
     MatrixClient(const std::wstring& homeserver);
     ~MatrixClient();
@@ -40,15 +43,19 @@ public:
 
     std::string m_currentRoomId;
 
-private:
-    void SyncLoop();
-    void SyncOnce();
+    std::string ExtractJsonValue(const std::string& json, const std::string& key);
+
     std::string HttpRequest(const std::wstring& method,
                             const std::wstring& path,
                             const std::string& body = "",
                             bool auth = false);
+
+private:
+    void SyncLoop();
+    void SyncOnce();
+
     std::optional<std::string> RunLocalSSOListener();
-    std::string ExtractJsonValue(const std::string& json, const std::string& key);
+
 
 private:
     LoginCallback onLogin_;

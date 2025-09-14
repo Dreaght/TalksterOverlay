@@ -1,4 +1,5 @@
 #include "MatrixClient.h"
+#include "../Utils.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <winhttp.h>
@@ -6,9 +7,12 @@
 #include <sstream>
 #include <thread>
 #include <future>
+#include "nlohmann/json.hpp"
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winhttp.lib")
+
+using json = nlohmann::json;
 
 inline void ShowError(const std::wstring& title, const std::wstring& msg) {
     MessageBoxW(NULL, msg.c_str(), title.c_str(), MB_ICONERROR | MB_OK);
@@ -22,14 +26,41 @@ MatrixClient::~MatrixClient() { Stop(); }
 
 // ------------------ JSON Helper ------------------
 std::string MatrixClient::ExtractJsonValue(const std::string& json, const std::string& key) {
-    std::string pattern = "\"" + key + "\":\"";
+    std::string pattern = "\"" + key + "\":";
     auto pos = json.find(pattern);
     if (pos == std::string::npos) return {};
     pos += pattern.size();
-    auto end = json.find('"', pos);
-    if (end == std::string::npos) return {};
+
+    // Skip whitespace
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t')) pos++;
+
+    // String value
+    if (pos < json.size() && json[pos] == '"') {
+        pos++;
+        std::string value;
+        bool escape = false;
+        for (; pos < json.size(); ++pos) {
+            char c = json[pos];
+            if (escape) {
+                value.push_back(c);
+                escape = false;
+            } else if (c == '\\') {
+                escape = true;
+            } else if (c == '"') {
+                break;
+            } else {
+                value.push_back(c);
+            }
+        }
+        return value;
+    }
+
+    // Non-string (numbers, bool, null)
+    size_t end = json.find_first_of(",}\n", pos);
+    if (end == std::string::npos) end = json.size();
     return json.substr(pos, end - pos);
 }
+
 
 inline void ShowInfo(const std::wstring& title, const std::wstring& msg) {
     MessageBoxW(NULL, msg.c_str(), title.c_str(), MB_ICONINFORMATION | MB_OK);
@@ -122,19 +153,35 @@ std::future<bool> MatrixClient::LoginWithSSOAndRandomRoomAsync() {
     });
 }
 
-
-
 // ------------------ Join / Send ------------------
 bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
     std::wstring path = L"/_matrix/client/r0/join/" +
         std::wstring(roomIdOrAlias.begin(), roomIdOrAlias.end());
+
     auto resp = HttpRequest(L"POST", path, "{}", true);
     if (resp.empty()) {
-        ShowError(L"Join Room Error", L"Failed to join room: " + std::wstring(roomIdOrAlias.begin(), roomIdOrAlias.end()));
+        ShowError(L"Join Room Error", L"Empty response for room: " + ToWString(roomIdOrAlias));
         return false;
     }
+
+    // Check for error in JSON
+    if (resp.find("\"errcode\"") != std::string::npos || resp.find("\"error\"") != std::string::npos) {
+        ShowError(L"Join Room Error", L"Failed to join room: " + ToWString(roomIdOrAlias));
+        return false;
+    }
+
+    // Check for room_id
+    auto roomId = ExtractJsonValue(resp, "room_id");
+    if (roomId.empty()) {
+        ShowError(L"Join Room Error", L"No room_id returned for: " + ToWString(roomIdOrAlias));
+        return false;
+    }
+
+    // Success
+    m_currentRoomId = roomId;
     return true;
 }
+
 
 void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string& text) {
     std::thread([this, roomId, text]() {
@@ -174,40 +221,80 @@ void MatrixClient::Stop() {
         m_thread.join();
 }
 
-void MatrixClient::SyncLoop() {
-    while (m_running) {
-        SyncOnce();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
+// MatrixClient.cpp (requires nlohmann/json.hpp included at top)
 void MatrixClient::SyncOnce() {
-    auto resp = HttpRequest(L"GET", L"/_matrix/client/r0/sync?timeout=30000", "", true);
+    // Build path (use since=next_batch when available)
+    std::wstring path = L"/_matrix/client/r0/sync?timeout=30000";
+    if (!m_nextBatch.empty()) {
+        // next_batch tokens are ASCII; this simple conversion is OK.
+        path += L"&since=" + std::wstring(m_nextBatch.begin(), m_nextBatch.end());
+    }
+
+    // Make request (long-poll)
+    auto resp = HttpRequest(L"GET", path, "", true);
     if (resp.empty()) return;
 
-    size_t pos = 0;
-    while ((pos = resp.find("\"msgtype\":\"m.text\"", pos)) != std::string::npos) {
-        try {
-            size_t roomPos = resp.rfind("\"room_id\":\"", pos);
-            if (roomPos == std::string::npos) { pos += 12; continue; }
-            roomPos += 10;
-            size_t roomEnd = resp.find('"', roomPos);
-            if (roomEnd == std::string::npos) { pos += 12; continue; }
-            std::string roomId = resp.substr(roomPos, roomEnd - roomPos);
+    try {
+        // Parse JSON response
+        json j = json::parse(resp);
 
-            size_t bodyPos = resp.find("\"body\":\"", pos);
-            if (bodyPos == std::string::npos) { pos = roomEnd; continue; }
-            bodyPos += 8;
-            size_t bodyEnd = resp.find('"', bodyPos);
-            if (bodyEnd == std::string::npos) { pos = bodyPos; continue; }
-            std::string body = resp.substr(bodyPos, bodyEnd - bodyPos);
+        // Save next_batch so we only receive new events next time
+        if (j.contains("next_batch") && j["next_batch"].is_string()) {
+            m_nextBatch = j["next_batch"].get<std::string>();
+        }
 
-            if (m_onMessage) m_onMessage(roomId, body);
+        // Walk rooms.join -> each room -> timeline -> events
+        if (j.contains("rooms") && j["rooms"].contains("join")) {
+            const auto &joinObj = j["rooms"]["join"];
+            for (auto it = joinObj.begin(); it != joinObj.end(); ++it) {
+                const std::string roomId = it.key();
+                const json &roomData = it.value();
+                if (!roomData.is_object()) continue;
 
-            pos = bodyEnd;
-        } catch (...) { pos++; }
+                // timeline.events
+                if (!roomData.contains("timeline")) continue;
+                const json &timeline = roomData["timeline"];
+                if (!timeline.is_object() || !timeline.contains("events")) continue;
+                const json &events = timeline["events"];
+                if (!events.is_array()) continue;
+
+                for (const auto &ev : events) {
+                    if (!ev.is_object()) continue;
+                    if (ev.value("type", "") != "m.room.message") continue;
+
+                    // content.msgtype == m.text
+                    if (!ev.contains("content")) continue;
+                    const json &content = ev["content"];
+                    if (!content.is_object()) continue;
+                    if (content.value("msgtype", "") != "m.text") continue;
+
+                    std::string body = content.value("body", "");
+                    if (m_onMessage) {
+                        // Call the message callback with roomId and body
+                        // Note: this runs on the sync thread. If m_onMessage touches UI,
+                        // marshal to the UI thread (PostMessage) instead.
+                        m_onMessage(roomId, body);
+                    }
+                }
+            }
+        }
+    } catch (const std::exception &ex) {
+        // parse error / unexpected JSON — ignore silently or log for debugging
+        // ShowError(L"Sync Error", ToWString(ex.what())); // optional
     }
 }
+
+void MatrixClient::SyncLoop() {
+    // Matches your Python pattern: long-poll then a small sleep before next poll.
+    while (m_running) {
+        SyncOnce();
+        // Python used `time.sleep(1)` after each sync loop.
+        // This keeps behaviour similar and avoids tight loops if server returns quickly.
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+
 
 // ------------------ HTTP ------------------
 std::string MatrixClient::HttpRequest(const std::wstring& method,
