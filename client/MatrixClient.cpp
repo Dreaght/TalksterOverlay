@@ -275,6 +275,12 @@ void MatrixClient::SyncOnce() {
             if (!content.is_object()) continue;
             if (content.value("msgtype", "") != "m.text") continue;
 
+            // Skip if the sender is us
+            std::string sender = ev.value("sender", "");
+            if (!sender.empty() && sender == m_userId) {
+                continue;
+            }
+
             std::string body = content.value("body", "");
             std::string eventId = ev.value("event_id", "");
 
@@ -282,12 +288,13 @@ void MatrixClient::SyncOnce() {
                 auto* data = new std::string(m_currentRoomId + "|" + body);
                 PostMessage(m_chatWindowHandle, WM_MATRIX_MESSAGE, 0, (LPARAM)data);
 
-                // Mark as read (send read receipt)
+                // Mark as read
                 if (!eventId.empty()) {
                     SendReadReceipt(m_currentRoomId, eventId);
                 }
             }
         }
+
     } catch (...) {
         // ignore parsing errors
     }
