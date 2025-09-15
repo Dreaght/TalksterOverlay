@@ -45,7 +45,7 @@ Talkster is a lightweight, minimal gaming chat overlay built on top of [Matrix](
 - Overlay visible over a game: shows real-time messages without blocking gameplay.
 - Hotkeys in action: quickly hide, open, or quit the overlay.
 
-![room_choice.png](assets/room_choice.png)
+![chatting.gif](assets/chatting.gif)
 ---
 
 ## Requirements
