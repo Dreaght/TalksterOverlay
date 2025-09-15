@@ -144,7 +144,9 @@ std::future<bool> MatrixClient::LoginWithSSOAndRandomRoomAsync() {
             "room_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 
         std::string createBody =
-            "{\"room_alias_name\":\"" + randomRoomAlias + "\", \"visibility\":\"private\"}";
+            "{\"room_alias_name\":\"" + randomRoomAlias + "\", "
+            "\"visibility\":\"public\", "
+            "\"preset\":\"private_chat\"}"; // keeps history and power levels limited
         auto createResp = HttpRequest(L"POST", L"/_matrix/client/r0/createRoom", createBody, true);
 
         std::string roomId = ExtractJsonValue(createResp, "room_id");

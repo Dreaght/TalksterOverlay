@@ -81,15 +81,32 @@ bool PromptRoomChoice(MatrixClient& matrix) {
         std::string randomRoomAlias =
             "room_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         std::string createBody =
-            "{\"room_alias_name\":\"" + randomRoomAlias + "\", \"visibility\":\"private\"}";
+            "{\"room_alias_name\":\"" + randomRoomAlias + "\", "
+            "\"visibility\":\"public\", "
+            "\"preset\":\"private_chat\"}"; // keeps history and power levels limited
+
         auto resp = matrix.HttpRequest(L"POST", L"/_matrix/client/r0/createRoom", createBody, true);
         std::string roomId = matrix.ExtractJsonValue(resp, "room_id");
 
         if (!roomId.empty()) {
-            roomJoined = matrix.JoinRoom(roomId);
-            MessageBoxW(nullptr,
-                        (L"Room created! Link: #" + ToWString(randomRoomAlias) + L":matrix.org").c_str(),
-                        L"Room Info", MB_OK | MB_ICONINFORMATION);
+            // Poll until room is joinable
+            bool joined = false;
+            const int maxRetries = 20;
+            const int delayMs = 500;
+            for (int i = 0; i < maxRetries; ++i) {
+                joined = matrix.JoinRoom(roomId);
+                if (joined) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+            }
+
+            if (joined) {
+                MessageBoxW(nullptr,
+                            (L"Room created! Link: #" + ToWString(randomRoomAlias) + L":matrix.org").c_str(),
+                            L"Room Info", MB_OK | MB_ICONINFORMATION);
+                roomJoined = true;
+            } else {
+                MessageBoxW(nullptr, L"Failed to join the newly created room!", L"Error", MB_ICONERROR);
+            }
         } else {
             MessageBoxW(nullptr, L"Failed to create room!", L"Error", MB_ICONERROR);
         }
