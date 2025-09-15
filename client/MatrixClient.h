@@ -68,6 +68,10 @@ class MatrixClient {
         return std::make_pair(token, userId);
     }
 
+
+
+
+
 public:
     MatrixClient(const std::wstring& homeserver);
     ~MatrixClient();
@@ -109,7 +113,34 @@ public:
         m_chatWindowHandle = hwnd;
     }
 
+    static std::optional<std::string> LoadLastRoomLink() {
+        auto path = GetLastRoomPath();
+        if (!std::filesystem::exists(path)) return {};
+        std::ifstream f(path);
+        if (!f.is_open()) return {};
+        std::string link;
+        std::getline(f, link);
+        if (link.empty()) return {};
+        return link;
+    }
 
+    static std::filesystem::path GetLastRoomPath() {
+        wchar_t appData[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) {
+            std::filesystem::path p(appData);
+            p /= L"Talkster";
+            std::filesystem::create_directories(p);
+            p /= L"last_room.dat";
+            return p;
+        }
+        return L"last_room.dat"; // fallback
+    }
+
+    static void SaveLastRoomLink(const std::string& roomLink) {
+        auto path = GetLastRoomPath();
+        std::ofstream f(path, std::ios::trunc);
+        if (f.is_open()) f << roomLink;
+    }
 
 private:
     void SyncLoop();
@@ -138,4 +169,8 @@ private:
         std::lock_guard<std::mutex> lock(m_tasksMutex);
         m_tasks.emplace_back(std::async(std::launch::async, std::forward<F>(func)));
     }
+
+
+
+
 };

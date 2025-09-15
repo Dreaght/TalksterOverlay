@@ -47,8 +47,12 @@ void SetupMessageSending(std::shared_ptr<TextBuffer>& sharedBuffer, MatrixClient
 bool InputBox(const std::wstring& title, const std::wstring& prompt, std::wstring& outText) {
     const int bufSize = 512;
     wchar_t buffer[bufSize] = {};
+    if (!outText.empty()) {
+        wcsncpy_s(buffer, outText.c_str(), bufSize - 1); // copy initial text
+    }
 
-    HWND hWnd = CreateWindowExW(0, L"EDIT", L"",
+    // Create a simple window with an EDIT control
+    HWND hWnd = CreateWindowExW(0, L"EDIT", buffer, // <-- pre-fill here
                                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                 CW_USEDEFAULT, CW_USEDEFAULT, 400, 100,
                                 nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
@@ -60,9 +64,11 @@ bool InputBox(const std::wstring& title, const std::wstring& prompt, std::wstrin
         DestroyWindow(hWnd);
         return true;
     }
+
     DestroyWindow(hWnd);
     return false;
 }
+
 
 bool PromptRoomChoice(MatrixClient& matrix) {
     int choice = MessageBoxW(nullptr,
@@ -89,7 +95,13 @@ bool PromptRoomChoice(MatrixClient& matrix) {
         }
     } else {
         std::wstring roomLink;
-        if (InputBox(L"Join Room", L"Enter room link:", roomLink) && !roomLink.empty()) {
+
+        // Suggest last room if exists
+        if (auto lastRoom = MatrixClient::LoadLastRoomLink()) {
+            roomLink = ToWString(*lastRoom);
+        }
+
+        if (InputBox(L"Join Room", L"Enter room link (or leave as suggested):", roomLink) && !roomLink.empty()) {
             roomJoined = matrix.JoinRoom(ToString(roomLink));
             if (roomJoined) {
                 MessageBoxW(nullptr, L"Joined room successfully!", L"Info", MB_OK | MB_ICONINFORMATION);

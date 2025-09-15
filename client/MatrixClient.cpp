@@ -178,23 +178,22 @@ bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
         return false;
     }
 
-    // Check for error in JSON
     if (resp.find("\"errcode\"") != std::string::npos || resp.find("\"error\"") != std::string::npos) {
         ShowError(L"Join Room Error", L"Failed to join room: " + ToWString(roomIdOrAlias));
         return false;
     }
 
-    // Check for room_id
     auto roomId = ExtractJsonValue(resp, "room_id");
     if (roomId.empty()) {
         ShowError(L"Join Room Error", L"No room_id returned for: " + ToWString(roomIdOrAlias));
         return false;
     }
 
-    // Success
     m_currentRoomId = roomId;
+    SaveLastRoomLink(roomIdOrAlias); // ✅ save last room link
     return true;
 }
+
 
 
 void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string& text) {
@@ -334,7 +333,7 @@ void MatrixClient::SyncLoop() {
         SyncOnce();
         // Python used `time.sleep(1)` after each sync loop.
         // This keeps behaviour similar and avoids tight loops if server returns quickly.
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
