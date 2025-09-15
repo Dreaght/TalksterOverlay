@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <thread>
 #include <chrono>
+#include <future>
 
 #define WM_MATRIX_LOGIN_COMPLETE (WM_APP + 1)
 #define WM_MATRIX_MESSAGE (WM_APP + 100)
@@ -15,7 +16,6 @@
 // -------------------- Matrix Setup --------------------
 void SetupMatrix(MatrixClient& matrix, ChatWindow& chat) {
     matrix.SetOnMessage([&](const std::string& roomId, const std::string& msg) {
-        // MessageBoxW(nullptr, ToWString(msg).c_str(), L"Info", MB_OK | MB_ICONINFORMATION);
         chat.OnExternalMessage(ToWString(msg), false);
     });
     matrix.Start();
@@ -32,31 +32,30 @@ void SetupHotkeys(HotkeyManager& hotkeys) {
 void SetupMessageSending(std::shared_ptr<TextBuffer>& sharedBuffer, MatrixClient& matrix) {
     sharedBuffer->AddOnSubmitHandler([&](const std::wstring& text) {
         std::string msg(ToString(text));
-        std::thread([&, msg]() {
+        // Use async instead of detached thread
+        std::async(std::launch::async, [&matrix, msg]() {
             if (!matrix.m_currentRoomId.empty()) {
                 matrix.SendMessageAsync(matrix.m_currentRoomId, msg);
             } else {
                 MessageBox(nullptr, "No room joined yet!", "Error", MB_ICONERROR);
             }
-        }).detach();
+        });
     });
 }
 
 // -------------------- Ask user for room choice --------------------
-// Simple InputBox using wide strings
 bool InputBox(const std::wstring& title, const std::wstring& prompt, std::wstring& outText) {
     const int bufSize = 512;
     wchar_t buffer[bufSize] = {};
 
-    // Create a basic edit control in a temporary window
-    HWND hWnd = CreateWindowExW(0, L"EDIT", L"",  // <-- Use L"EDIT"
+    HWND hWnd = CreateWindowExW(0, L"EDIT", L"",
                                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                 CW_USEDEFAULT, CW_USEDEFAULT, 400, 100,
                                 nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
     if (!hWnd) return false;
 
-    if (MessageBoxW(nullptr, prompt.c_str(), title.c_str(), MB_OKCANCEL | MB_ICONQUESTION) == IDOK) { // <-- MessageBoxW
-        GetWindowTextW(hWnd, buffer, bufSize); // <-- GetWindowTextW
+    if (MessageBoxW(nullptr, prompt.c_str(), title.c_str(), MB_OKCANCEL | MB_ICONQUESTION) == IDOK) {
+        GetWindowTextW(hWnd, buffer, bufSize);
         outText = buffer;
         DestroyWindow(hWnd);
         return true;
@@ -66,7 +65,7 @@ bool InputBox(const std::wstring& title, const std::wstring& prompt, std::wstrin
 }
 
 bool PromptRoomChoice(MatrixClient& matrix) {
-    int choice = MessageBoxW(nullptr,  // <-- Use MessageBoxW
+    int choice = MessageBoxW(nullptr,
                              L"Do you want to host a new room?\nYes = Host, No = Join existing room",
                              L"Room Choice",
                              MB_YESNO | MB_ICONQUESTION);
@@ -115,7 +114,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     chat.SetMessageWindow(&messages);
 
     MatrixClient matrix(L"matrix.org");
-
     matrix.SetChatWindowHandle(chat.GetHWND());
 
     matrix.SetOnLogin([&](bool success) {
@@ -135,10 +133,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         }
     });
 
-    // Only login; room choice handled after login
-    std::thread([&matrix]() {
-        matrix.LoginWithSSOAsync().get(); // blocking for simplicity
-    }).detach();
+    // Run login on background thread but keep handle with future
+    auto loginFuture = std::async(std::launch::async, [&matrix]() {
+        return matrix.LoginWithSSOAsync().get();
+    });
 
     HotkeyManager hotkeys;
     SetupHotkeys(hotkeys);
@@ -151,7 +149,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         if (msg.message == WM_HOTKEY) {
             switch (msg.wParam) {
                 case 1: chat.ToggleVisible(); break;
-                case 2: PostQuitMessage(0); break;
+                case 2: // Quit
+                    matrix.Stop(); // ensure sync loop thread exits
+                    PostQuitMessage(0);
+                    break;
                 case 3: chat.Hide(); break;
             }
         }
