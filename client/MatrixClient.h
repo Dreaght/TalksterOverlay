@@ -37,6 +37,8 @@ public:
     void Start();
     void Stop();
 
+    void SendReadReceipt(const std::string &roomId, const std::string &eventId);
+
     void SetOnMessage(std::function<void(const std::string& roomId, const std::string& msg)> callback) {
         m_onMessage = callback;
     }

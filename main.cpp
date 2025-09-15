@@ -110,7 +110,7 @@ bool PromptRoomChoice(MatrixClient& matrix) {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     auto sharedBuffer = std::make_shared<TextBuffer>();
 
-    MessageWindow messages(hInstance, 450, 200, 600, 550, sharedBuffer);
+    MessageWindow messages(hInstance, 450, 200, 750, 600, sharedBuffer);
     ChatWindow chat(hInstance, 600, 80, 50, sharedBuffer);
     chat.SetMessageWindow(&messages);
 

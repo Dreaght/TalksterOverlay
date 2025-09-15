@@ -223,71 +223,73 @@ void MatrixClient::Stop() {
         m_thread.join();
 }
 
+void MatrixClient::SendReadReceipt(const std::string& roomId, const std::string& eventId) {
+    std::wstring path = L"/_matrix/client/r0/rooms/" +
+        std::wstring(roomId.begin(), roomId.end()) +
+        L"/receipt/m.read/" +
+        std::wstring(eventId.begin(), eventId.end());
+
+    HttpRequest(L"POST", path, "{}", true);
+}
+
+
 void MatrixClient::SyncOnce() {
-    // Build path (use since=next_batch when available)
     std::wstring path = L"/_matrix/client/r0/sync?timeout=30000";
     if (!m_nextBatch.empty()) {
-        // next_batch tokens are ASCII; this simple conversion is OK.
         path += L"&since=" + std::wstring(m_nextBatch.begin(), m_nextBatch.end());
     }
 
-    // Make request (long-poll)
     auto resp = HttpRequest(L"GET", path, "", true);
     if (resp.empty()) return;
 
     try {
-        // Parse JSON response
         json j = json::parse(resp);
 
-        // Save next_batch so we only receive new events next time
+        // Save next_batch for incremental sync
         if (j.contains("next_batch") && j["next_batch"].is_string()) {
             m_nextBatch = j["next_batch"].get<std::string>();
         }
 
-        // Walk rooms.join -> each room -> timeline -> events
-        if (j.contains("rooms") && j["rooms"].contains("join")) {
-            const auto &joinObj = j["rooms"]["join"];
-            for (auto it = joinObj.begin(); it != joinObj.end(); ++it) {
-                const std::string roomId = it.key();
-                const json &roomData = it.value();
-                if (!roomData.is_object()) continue;
+        // We only care about current room
+        if (m_currentRoomId.empty()) return;
+        if (!j.contains("rooms") || !j["rooms"].contains("join")) return;
 
-                // timeline.events
-                if (!roomData.contains("timeline")) continue;
-                const json &timeline = roomData["timeline"];
-                if (!timeline.is_object() || !timeline.contains("events")) continue;
-                const json &events = timeline["events"];
-                if (!events.is_array()) continue;
+        auto joinObj = j["rooms"]["join"];
+        if (!joinObj.contains(m_currentRoomId)) return;
 
-                for (const auto &ev : events) {
-                    if (!ev.is_object()) continue;
-                    if (ev.value("type", "") != "m.room.message") continue;
+        const auto& roomData = joinObj[m_currentRoomId];
+        if (!roomData.is_object()) return;
+        if (!roomData.contains("timeline")) return;
 
-                    // content.msgtype == m.text
-                    if (!ev.contains("content")) continue;
-                    const json &content = ev["content"];
-                    if (!content.is_object()) continue;
-                    if (content.value("msgtype", "") != "m.text") continue;
+        const auto& timeline = roomData["timeline"];
+        if (!timeline.is_object() || !timeline.contains("events")) return;
 
-                    std::string body = content.value("body", "");
+        const auto& events = timeline["events"];
+        if (!events.is_array()) return;
 
-                    if (m_onMessage && m_chatWindowHandle) {
-                        std::string body = content.value("body", "");
-                        std::string rid  = roomId;
+        for (const auto& ev : events) {
+            if (!ev.is_object()) continue;
+            if (ev.value("type", "") != "m.room.message") continue;
 
-                        auto* data = new std::string(rid + "|" + body);
+            const auto& content = ev["content"];
+            if (!content.is_object()) continue;
+            if (content.value("msgtype", "") != "m.text") continue;
 
-                        PostMessage(m_chatWindowHandle, WM_MATRIX_MESSAGE, 0, (LPARAM)data);
-                    }
+            std::string body = content.value("body", "");
+            std::string eventId = ev.value("event_id", "");
 
+            if (!body.empty() && m_onMessage && m_chatWindowHandle) {
+                auto* data = new std::string(m_currentRoomId + "|" + body);
+                PostMessage(m_chatWindowHandle, WM_MATRIX_MESSAGE, 0, (LPARAM)data);
 
-
+                // Mark as read (send read receipt)
+                if (!eventId.empty()) {
+                    SendReadReceipt(m_currentRoomId, eventId);
                 }
             }
         }
-    } catch (const std::exception &ex) {
-        // parse error / unexpected JSON — ignore silently or log for debugging
-        // ShowError(L"Sync Error", ToWString(ex.what())); // optional
+    } catch (...) {
+        // ignore parsing errors
     }
 }
 
