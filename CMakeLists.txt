@@ -3,7 +3,9 @@ project(TalksterUnwindowed)
 
 set(CMAKE_CXX_STANDARD 26)
 
-add_executable(TalksterUnwindowed main.cpp
+# -------------------- Source Files --------------------
+add_executable(TalksterUnwindowed
+        main.cpp
         window/ChatWindow.cpp
         window/ChatWindow.h
         renderer/Renderer.h
@@ -21,14 +23,24 @@ add_executable(TalksterUnwindowed main.cpp
         client/MatrixClient.h
         Utils.h)
 
+# -------------------- Include Directories --------------------
 target_include_directories(TalksterUnwindowed PRIVATE
         ${CMAKE_SOURCE_DIR}/external
         ${CMAKE_SOURCE_DIR}/external/nlohmann
 )
 
-
-# Add this line to specify WinMain as the entry point
+# -------------------- Windows Subsystem --------------------
+# Ensures WinMain is used instead of main
 set_target_properties(TalksterUnwindowed PROPERTIES WIN32_EXECUTABLE TRUE)
 
-# Link against Direct2D and other Windows libraries
+# -------------------- Link Windows Libraries --------------------
 target_link_libraries(TalksterUnwindowed PRIVATE d2d1 dwrite.lib ws2_32)
+
+# -------------------- Release Build Optimizations --------------------
+if(MSVC)
+    # Compiler flags
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT /O1 /Os /DNDEBUG /GL")
+
+    # Linker flags
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF")
+endif()
