@@ -1,7 +1,10 @@
 #include "ChatWindow.h"
+#include "../Utils.h"
 
 #include <stdexcept>
 #include <utility>
+
+#define WM_MATRIX_MESSAGE (WM_APP + 100)
 
 ChatWindow::ChatWindow(HINSTANCE hInstance, int width, int height, int margin, std::shared_ptr<TextBuffer> sharedBuffer)
     : m_buffer(std::move(sharedBuffer))
@@ -129,6 +132,21 @@ LRESULT ChatWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             m_destroyed = true;
             KillTimer(m_hWnd, 1);
             return 0;
+
+        case WM_MATRIX_MESSAGE: {
+            std::string* data = reinterpret_cast<std::string*>(lParam);
+            if (data) {
+                // Split roomId | message
+                auto sep = data->find('|');
+                std::string roomId = data->substr(0, sep);
+                std::string body   = data->substr(sep + 1);
+
+                OnExternalMessage(ToWString(body), false);
+
+                delete data; // free the heap memory
+            }
+            return 0;
+        }
     }
     return DefWindowProc(m_hWnd, msg, wParam, lParam);
 }

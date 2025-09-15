@@ -50,6 +50,10 @@ public:
                             const std::string& body = "",
                             bool auth = false);
 
+    void SetChatWindowHandle(HWND hwnd) {
+        m_chatWindowHandle = hwnd;
+    }
+
 private:
     void SyncLoop();
     void SyncOnce();
@@ -64,7 +68,7 @@ private:
     std::string m_accessToken;
     std::string m_userId;
 
-
+    HWND m_chatWindowHandle = nullptr;
 
     std::function<void(const std::string&, const std::string&)> m_onMessage;
 

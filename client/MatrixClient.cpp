@@ -12,6 +12,8 @@
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winhttp.lib")
 
+#define WM_MATRIX_MESSAGE (WM_APP + 100)
+
 using json = nlohmann::json;
 
 inline void ShowError(const std::wstring& title, const std::wstring& msg) {
@@ -221,7 +223,6 @@ void MatrixClient::Stop() {
         m_thread.join();
 }
 
-// MatrixClient.cpp (requires nlohmann/json.hpp included at top)
 void MatrixClient::SyncOnce() {
     // Build path (use since=next_batch when available)
     std::wstring path = L"/_matrix/client/r0/sync?timeout=30000";
@@ -269,12 +270,18 @@ void MatrixClient::SyncOnce() {
                     if (content.value("msgtype", "") != "m.text") continue;
 
                     std::string body = content.value("body", "");
-                    if (m_onMessage) {
-                        // Call the message callback with roomId and body
-                        // Note: this runs on the sync thread. If m_onMessage touches UI,
-                        // marshal to the UI thread (PostMessage) instead.
-                        m_onMessage(roomId, body);
+
+                    if (m_onMessage && m_chatWindowHandle) {
+                        std::string body = content.value("body", "");
+                        std::string rid  = roomId;
+
+                        auto* data = new std::string(rid + "|" + body);
+
+                        PostMessage(m_chatWindowHandle, WM_MATRIX_MESSAGE, 0, (LPARAM)data);
                     }
+
+
+
                 }
             }
         }

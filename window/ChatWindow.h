@@ -17,6 +17,8 @@ public:
 
     void OnExternalMessage(const std::wstring& msg, bool sent) const;
 
+    HWND GetHWND() const { return m_hWnd; }
+
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);

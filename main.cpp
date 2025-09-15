@@ -10,11 +10,12 @@
 #include <chrono>
 
 #define WM_MATRIX_LOGIN_COMPLETE (WM_APP + 1)
+#define WM_MATRIX_MESSAGE (WM_APP + 100)
 
 // -------------------- Matrix Setup --------------------
 void SetupMatrix(MatrixClient& matrix, ChatWindow& chat) {
     matrix.SetOnMessage([&](const std::string& roomId, const std::string& msg) {
-        MessageBoxW(nullptr, ToWString(msg).c_str(), L"Info", MB_OK | MB_ICONINFORMATION);
+        // MessageBoxW(nullptr, ToWString(msg).c_str(), L"Info", MB_OK | MB_ICONINFORMATION);
         chat.OnExternalMessage(ToWString(msg), false);
     });
     matrix.Start();
@@ -109,11 +110,13 @@ bool PromptRoomChoice(MatrixClient& matrix) {
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     auto sharedBuffer = std::make_shared<TextBuffer>();
 
-    MessageWindow messages(hInstance, 500, 200, 600, 500, sharedBuffer);
+    MessageWindow messages(hInstance, 450, 200, 600, 550, sharedBuffer);
     ChatWindow chat(hInstance, 600, 80, 50, sharedBuffer);
     chat.SetMessageWindow(&messages);
 
     MatrixClient matrix(L"matrix.org");
+
+    matrix.SetChatWindowHandle(chat.GetHWND());
 
     matrix.SetOnLogin([&](bool success) {
         if (!success) {
