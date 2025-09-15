@@ -9,8 +9,14 @@
 #include <ws2tcpip.h>
 #include <future>
 #include <winhttp.h>
-
+#include <shlobj.h> // SHGetFolderPath
+#include <filesystem>
+#include <fstream>
+#include <../Utils.h>
 #undef SendMessage
+
+
+
 
 class MatrixClient {
 
@@ -18,6 +24,49 @@ class MatrixClient {
 
     std::mutex m_tasksMutex;
     std::vector<std::future<void>> m_tasks;
+
+    static std::filesystem::path GetMatrixCredsPath() {
+        wchar_t appData[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) {
+            std::filesystem::path p(appData);
+            p /= L"Talkster";
+            std::filesystem::create_directories(p); // make sure folder exists
+            p /= L"matrix_credentials.dat";
+            return p;
+        }
+        return L"matrix_credentials.dat"; // fallback
+    }
+
+    static void SaveCredentialsEncrypted(const std::string& accessToken, const std::string& userId) {
+        std::string combined = accessToken + "\n" + userId;
+        std::vector<BYTE> encrypted;
+        if (!EncryptData(combined, encrypted)) return;
+
+        auto path = GetMatrixCredsPath();
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        if (f.is_open()) {
+            f.write((char*)encrypted.data(), encrypted.size());
+        }
+    }
+
+    static std::optional<std::pair<std::string, std::string>> LoadCredentialsEncrypted() {
+        auto path = GetMatrixCredsPath();
+        if (!std::filesystem::exists(path)) return {};
+
+        std::ifstream f(path, std::ios::binary);
+        std::vector<BYTE> encrypted((std::istreambuf_iterator<char>(f)),
+                                    std::istreambuf_iterator<char>());
+
+        std::string decrypted;
+        if (!DecryptData(encrypted, decrypted)) return {};
+
+        size_t pos = decrypted.find('\n');
+        if (pos == std::string::npos) return {};
+        std::string token = decrypted.substr(0, pos);
+        std::string userId = decrypted.substr(pos + 1);
+
+        return std::make_pair(token, userId);
+    }
 
 public:
     MatrixClient(const std::wstring& homeserver);

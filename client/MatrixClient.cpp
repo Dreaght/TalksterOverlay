@@ -11,6 +11,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "Crypt32.lib")
 
 #define WM_MATRIX_MESSAGE (WM_APP + 100)
 
@@ -75,7 +76,19 @@ void MatrixClient::SetOnLogin(LoginCallback cb) {
 
 // ------------------ Helper: SSO login + callback ------------------
 bool MatrixClient::PerformLogin() {
-    // ShowInfo(L"Login", L"Starting SSO login...");
+    // Try loading encrypted credentials
+    if (auto creds = LoadCredentialsEncrypted()) {
+        m_accessToken = creds->first;
+        m_userId = creds->second;
+
+        // Verify token
+        auto resp = HttpRequest(L"GET", L"/_matrix/client/r0/account/whoami", "", true);
+        if (!resp.empty() && resp.find(m_userId) != std::string::npos) {
+            if (onLogin_) onLogin_(true);
+            return true;
+        }
+        // Invalid → fallback to SSO
+    }
 
     auto tokenOpt = RunLocalSSOListener();
     if (!tokenOpt) {
@@ -83,8 +96,6 @@ bool MatrixClient::PerformLogin() {
         if (onLogin_) onLogin_(false);
         return false;
     }
-
-    // ShowInfo(L"Login", L"Got login token, exchanging for access token...");
 
     std::string loginToken = *tokenOpt;
     std::string body = "{\"type\":\"m.login.token\",\"token\":\"" + loginToken + "\"}";
@@ -105,13 +116,13 @@ bool MatrixClient::PerformLogin() {
         return false;
     }
 
-    // ShowInfo(L"Login", L"Login successful. User ID: " + std::wstring(m_userId.begin(), m_userId.end()));
+    // Save encrypted for next time
+    SaveCredentialsEncrypted(m_accessToken, m_userId);
 
-    // Fire callback for regular login (without room)
     if (onLogin_) onLogin_(true);
-
     return true;
 }
+
 
 // ------------------ Async SSO Login ------------------
 std::future<bool> MatrixClient::LoginWithSSOAsync() {
