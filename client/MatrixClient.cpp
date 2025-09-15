@@ -26,6 +26,7 @@ MatrixClient::MatrixClient(const std::wstring& homeserver)
 
 MatrixClient::~MatrixClient() { Stop(); }
 
+
 // ------------------ JSON Helper ------------------
 std::string MatrixClient::ExtractJsonValue(const std::string& json, const std::string& key) {
     std::string pattern = "\"" + key + "\":";
@@ -74,7 +75,7 @@ void MatrixClient::SetOnLogin(LoginCallback cb) {
 
 // ------------------ Helper: SSO login + callback ------------------
 bool MatrixClient::PerformLogin() {
-    ShowInfo(L"Login", L"Starting SSO login...");
+    // ShowInfo(L"Login", L"Starting SSO login...");
 
     auto tokenOpt = RunLocalSSOListener();
     if (!tokenOpt) {
@@ -83,7 +84,7 @@ bool MatrixClient::PerformLogin() {
         return false;
     }
 
-    ShowInfo(L"Login", L"Got login token, exchanging for access token...");
+    // ShowInfo(L"Login", L"Got login token, exchanging for access token...");
 
     std::string loginToken = *tokenOpt;
     std::string body = "{\"type\":\"m.login.token\",\"token\":\"" + loginToken + "\"}";
@@ -104,7 +105,7 @@ bool MatrixClient::PerformLogin() {
         return false;
     }
 
-    ShowInfo(L"Login", L"Login successful. User ID: " + std::wstring(m_userId.begin(), m_userId.end()));
+    // ShowInfo(L"Login", L"Login successful. User ID: " + std::wstring(m_userId.begin(), m_userId.end()));
 
     // Fire callback for regular login (without room)
     if (onLogin_) onLogin_(true);
@@ -186,16 +187,12 @@ bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
 
 
 void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string& text) {
-    std::thread([this, roomId, text]() {
-        // ShowInfo(L"SendMessageAsync", L"Preparing to send message to room: " + std::wstring(roomId.begin(), roomId.end()));
-
+    LaunchTask([this, roomId, text]() {
         std::string txnId = std::to_string(::GetTickCount64());
         std::wstring path = L"/_matrix/client/r0/rooms/" +
-            std::wstring(roomId.begin(), roomId.end()) +
-            L"/send/m.room.message/" +
-            std::wstring(txnId.begin(), txnId.end());
-
-        // ShowInfo(L"SendMessageAsync", L"HTTP PUT path: " + path);
+                            std::wstring(roomId.begin(), roomId.end()) +
+                            L"/send/m.room.message/" +
+                            std::wstring(txnId.begin(), txnId.end());
 
         std::string body = "{\"msgtype\":\"m.text\",\"body\":\"" + text + "\"}";
         auto resp = HttpRequest(L"PUT", path, body, true);
@@ -203,11 +200,10 @@ void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string
         if (resp.empty()) {
             ShowError(L"Send Message Error", L"Failed to send message to room: " +
                       std::wstring(roomId.begin(), roomId.end()));
-        } else {
-            // ShowInfo(L"SendMessageAsync", L"Message sent successfully: " + std::wstring(text.begin(), text.end()));
         }
-    }).detach();
+    });
 }
+
 
 // ------------------ Sync ------------------
 void MatrixClient::Start() {
@@ -219,9 +215,30 @@ void MatrixClient::Start() {
 void MatrixClient::Stop() {
     if (!m_running) return;
     m_running = false;
+
+    // Cancel any pending HTTP request
+    {
+        std::lock_guard<std::mutex> lock(m_httpMutex);
+        if (m_hRequest) {
+            ::WinHttpCloseHandle(m_hRequest);
+            m_hRequest = nullptr;
+        }
+    }
+
     if (m_thread.joinable())
         m_thread.join();
+
+    // Wait for all async tasks
+    {
+        std::lock_guard<std::mutex> lock(m_tasksMutex);
+        for (auto& task : m_tasks) {
+            if (task.valid()) task.wait();
+        }
+        m_tasks.clear();
+    }
 }
+
+
 
 void MatrixClient::SendReadReceipt(const std::string& roomId, const std::string& eventId) {
     std::wstring path = L"/_matrix/client/r0/rooms/" +
@@ -316,7 +333,8 @@ void MatrixClient::SyncLoop() {
 std::string MatrixClient::HttpRequest(const std::wstring& method,
                                      const std::wstring& path,
                                      const std::string& body,
-                                     bool auth) {
+                                     bool auth)
+{
     HINTERNET hSession = ::WinHttpOpen(L"MatrixClient/1.0",
                                       WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                       WINHTTP_NO_PROXY_NAME,
@@ -326,11 +344,15 @@ std::string MatrixClient::HttpRequest(const std::wstring& method,
     HINTERNET hConnect = ::WinHttpConnect(hSession, m_homeserver.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (!hConnect) { ::WinHttpCloseHandle(hSession); ShowError(L"HTTP Error", L"Failed to connect to server."); return {}; }
 
-    HINTERNET hRequest = ::WinHttpOpenRequest(hConnect, method.c_str(), path.c_str(),
-                                             NULL, WINHTTP_NO_REFERER,
-                                             WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                             WINHTTP_FLAG_SECURE);
-    if (!hRequest) { ::WinHttpCloseHandle(hConnect); ::WinHttpCloseHandle(hSession); ShowError(L"HTTP Error", L"Failed to create HTTP request."); return {}; }
+    {
+        std::lock_guard<std::mutex> lock(m_httpMutex);
+        m_hRequest = ::WinHttpOpenRequest(hConnect, method.c_str(), path.c_str(),
+                                          NULL, WINHTTP_NO_REFERER,
+                                          WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                          WINHTTP_FLAG_SECURE);
+    }
+
+    if (!m_hRequest) { ::WinHttpCloseHandle(hConnect); ::WinHttpCloseHandle(hSession); ShowError(L"HTTP Error", L"Failed to create HTTP request."); return {}; }
 
     std::wstring headers;
     if (auth && !m_accessToken.empty()) {
@@ -338,7 +360,7 @@ std::string MatrixClient::HttpRequest(const std::wstring& method,
         headers = std::wstring(token.begin(), token.end());
     }
 
-    BOOL bResults = ::WinHttpSendRequest(hRequest,
+    BOOL bResults = ::WinHttpSendRequest(m_hRequest,
                                          headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
                                          (DWORD)-1L,
                                          body.empty() ? WINHTTP_NO_REQUEST_DATA : (LPVOID)body.data(),
@@ -347,30 +369,35 @@ std::string MatrixClient::HttpRequest(const std::wstring& method,
                                          0);
 
     std::string result;
-    if (bResults && ::WinHttpReceiveResponse(hRequest, NULL)) {
+    if (bResults && ::WinHttpReceiveResponse(m_hRequest, NULL)) {
         DWORD dwSize = 0;
         do {
             DWORD dwDownloaded = 0;
-            if (!::WinHttpQueryDataAvailable(hRequest, &dwSize)) break;
+            if (!::WinHttpQueryDataAvailable(m_hRequest, &dwSize)) break;
             if (dwSize == 0) break;
             std::string buffer(dwSize, 0);
-            if (!::WinHttpReadData(hRequest, buffer.data(), dwSize, &dwDownloaded)) break;
+            if (!::WinHttpReadData(m_hRequest, buffer.data(), dwSize, &dwDownloaded)) break;
             buffer.resize(dwDownloaded);
             result += buffer;
         } while (dwSize > 0);
     } else {
-        ShowError(L"HTTP Error", L"Failed to send or receive HTTP request.");
+        // ShowError(L"HTTP Error", L"Failed to send or receive HTTP request."); // optional
     }
 
-    ::WinHttpCloseHandle(hRequest);
+    {
+        std::lock_guard<std::mutex> lock(m_httpMutex);
+        ::WinHttpCloseHandle(m_hRequest);
+        m_hRequest = nullptr;
+    }
     ::WinHttpCloseHandle(hConnect);
     ::WinHttpCloseHandle(hSession);
     return result;
 }
 
+
 // ------------------ Local SSO Listener ------------------
 std::optional<std::string> MatrixClient::RunLocalSSOListener() {
-    ShowInfo(L"SSO", L"Starting local listener at http://localhost:8000 ...");
+    // ShowInfo(L"SSO", L"Starting local listener at http://localhost:8000 ...");
 
     ::WSADATA wsaData;
     if (::WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) { ShowError(L"WSA Error", L"Failed to initialize Winsock."); return {}; }
@@ -397,13 +424,13 @@ std::optional<std::string> MatrixClient::RunLocalSSOListener() {
 
     std::wstring url = L"https://" + m_homeserver +
     L"/_matrix/client/r0/login/sso/redirect?redirectUrl=http://localhost:8000";
-    ShowInfo(L"SSO", L"Opening browser for login: " + url);
+    // ShowInfo(L"SSO", L"Opening browser for login: " + url);
     ::ShellExecuteW(NULL, L"open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 
     ::SOCKET clientSock = ::accept(listenSock, nullptr, nullptr);
     if (clientSock == INVALID_SOCKET) { ::closesocket(listenSock); ::WSACleanup(); ShowError(L"Accept Error", L"Failed to accept incoming connection."); return {}; }
 
-    ShowInfo(L"SSO", L"Received callback from browser. Extracting token...");
+    // ShowInfo(L"SSO", L"Received callback from browser. Extracting token...");
 
     char buffer[2048];
     int received = ::recv(clientSock, buffer, sizeof(buffer) - 1, 0);
@@ -417,7 +444,7 @@ std::optional<std::string> MatrixClient::RunLocalSSOListener() {
     auto endPos = request.find(' ', tokenPos);
     std::string loginToken = request.substr(tokenPos, endPos - tokenPos);
 
-    ShowInfo(L"SSO", L"Got loginToken: " + std::wstring(loginToken.begin(), loginToken.end()));
+    // ShowInfo(L"SSO", L"Got loginToken: " + std::wstring(loginToken.begin(), loginToken.end()));
 
     std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>Login successful! You can close this window.</h1>";
     ::send(clientSock, response.c_str(), response.size(), 0);

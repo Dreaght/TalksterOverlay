@@ -8,12 +8,16 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <future>
+#include <winhttp.h>
 
 #undef SendMessage
 
 class MatrixClient {
 
     std::string m_nextBatch;
+
+    std::mutex m_tasksMutex;
+    std::vector<std::future<void>> m_tasks;
 
 public:
     MatrixClient(const std::wstring& homeserver);
@@ -56,14 +60,17 @@ public:
         m_chatWindowHandle = hwnd;
     }
 
+
+
 private:
     void SyncLoop();
     void SyncOnce();
 
+    HINTERNET m_hRequest = nullptr;
+    std::mutex m_httpMutex;
+
     std::optional<std::string> RunLocalSSOListener();
 
-
-private:
     LoginCallback onLogin_;
 
     std::wstring m_homeserver;
@@ -76,4 +83,10 @@ private:
 
     std::thread m_thread;
     std::atomic<bool> m_running{ false };
+
+    template <typename F>
+    void LaunchTask(F&& func) {
+        std::lock_guard<std::mutex> lock(m_tasksMutex);
+        m_tasks.emplace_back(std::async(std::launch::async, std::forward<F>(func)));
+    }
 };

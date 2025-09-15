@@ -123,7 +123,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
             return;
         }
 
-        MessageBox(nullptr, "Login successful!", "Success", MB_OK);
+        // MessageBox(nullptr, "Login successful!", "Success", MB_OK);
         SetupMatrix(matrix, chat);
         SetupMessageSending(sharedBuffer, matrix);
 
