@@ -263,7 +263,7 @@ void MatrixClient::SendReadReceipt(const std::string& roomId, const std::string&
 
 
 void MatrixClient::SyncOnce() {
-    std::wstring path = L"/_matrix/client/r0/sync?timeout=30000";
+    std::wstring path = L"/_matrix/client/r0/sync?timeout=3000";
     if (!m_nextBatch.empty()) {
         path += L"&since=" + std::wstring(m_nextBatch.begin(), m_nextBatch.end());
     }
