@@ -21,7 +21,15 @@ add_executable(TalksterUnwindowed
         client/WebSocketClient.h
         client/MatrixClient.cpp
         client/MatrixClient.h
-        Utils.h)
+        Utils.h
+        client/MatrixSetup.h
+        client/MatrixSetup.cpp
+        HotkeySetup.cpp
+        HotkeySetup.h
+        MessageSending.cpp
+        MessageSending.h
+        RoomPrompt.cpp
+        RoomPrompt.h)
 
 # -------------------- Include Directories --------------------
 target_include_directories(TalksterUnwindowed PRIVATE
