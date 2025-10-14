@@ -51,28 +51,23 @@ namespace App {
             std::string roomId = matrix.ExtractJsonValue(resp, "room_id");
 
             if (!roomId.empty()) {
-                bool joined = false;
-                const int maxRetries = 20;
-                const int delayMs = 500;
-                for (int i = 0; i < maxRetries; ++i) {
-                    joined = matrix.JoinRoom(roomId);
-                    if (joined) break;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
-                }
-
-                if (joined) {
-                    MessageBoxW(nullptr,
-                                (L"Room created! Link: #" + ToWString(randomRoomAlias) + L":matrix.org").c_str(),
-                                L"Room Info", MB_OK | MB_ICONINFORMATION);
-                    return true;
-                } else {
-                    MessageBoxW(nullptr, L"Failed to join the newly created room!", L"Error", MB_ICONERROR);
-                    return false;
-                }
+                // creator is automatically joined
+                MessageBoxW(nullptr,
+                            (L"Room created! ID: " + ToWString(roomId)).c_str(),
+                            L"Room Info", MB_OK | MB_ICONINFORMATION);
+                return true;
             } else {
-                MessageBoxW(nullptr, L"Failed to create room!", L"Error", MB_ICONERROR);
+                // extract error if present
+                std::string errcode = matrix.ExtractJsonValue(resp, "errcode");
+                std::string errorMsg = matrix.ExtractJsonValue(resp, "error");
+                std::wstring fullError = L"Failed to create room!\n";
+                if (!errcode.empty()) fullError += L"Error code: " + ToWString(errcode) + L"\n";
+                if (!errorMsg.empty()) fullError += L"Message: " + ToWString(errorMsg);
+
+                MessageBoxW(nullptr, fullError.c_str(), L"Error", MB_ICONERROR);
                 return false;
             }
+
         } else {
             std::wstring roomLink;
             if (auto lastRoom = MatrixClient::LoadLastRoomLink()) {

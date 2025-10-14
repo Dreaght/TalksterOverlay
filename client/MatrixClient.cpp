@@ -180,8 +180,20 @@ bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
         return false;
     }
 
-    if (resp.find("\"errcode\"") != std::string::npos || resp.find("\"error\"") != std::string::npos) {
-        ShowError(L"Join Room Error", L"Failed to join room: " + ToWString(roomIdOrAlias));
+    // Check if response contains an error
+    if (resp.find("\"errcode\"") != std::string::npos) {
+        std::string errcode = ExtractJsonValue(resp, "errcode");
+        if (errcode == "M_ALREADY_JOINED") {
+            // Treat as success
+            m_currentRoomId = roomIdOrAlias;
+            SaveLastRoomLink(roomIdOrAlias);
+            return true;
+        }
+
+        std::string error = ExtractJsonValue(resp, "error");
+        ShowError(L"Join Room Error",
+                  L"Failed to join room: " + ToWString(roomIdOrAlias) +
+                  L"\nError: " + ToWString(error));
         return false;
     }
 
@@ -192,11 +204,9 @@ bool MatrixClient::JoinRoom(const std::string& roomIdOrAlias) {
     }
 
     m_currentRoomId = roomId;
-    SaveLastRoomLink(roomIdOrAlias); // ✅ save last room link
+    SaveLastRoomLink(roomIdOrAlias);
     return true;
 }
-
-
 
 void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string& text) {
     LaunchTask([this, roomId, text]() {
@@ -209,13 +219,20 @@ void MatrixClient::SendMessageAsync(const std::string& roomId, const std::string
         std::string body = "{\"msgtype\":\"m.text\",\"body\":\"" + text + "\"}";
         auto resp = HttpRequest(L"PUT", path, body, true);
 
-        if (resp.empty()) {
-            ShowError(L"Send Message Error", L"Failed to send message to room: " +
-                      std::wstring(roomId.begin(), roomId.end()));
+        // Check for errcode
+        if (resp.find("\"errcode\"") != std::string::npos) {
+            std::string errcode = ExtractJsonValue(resp, "errcode");
+            std::string error = ExtractJsonValue(resp, "error");
+            ShowError(L"Send Message Error",
+                      L"Failed to send message to room: " + std::wstring(roomId.begin(), roomId.end()) +
+                      L"\nError: " + ToWString(error) +
+                      L" (" + ToWString(errcode) + L")");
+            return;
         }
+
+        // Otherwise, assume success
     });
 }
-
 
 // ------------------ Sync ------------------
 void MatrixClient::Start() {
