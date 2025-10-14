@@ -115,6 +115,14 @@ LRESULT ChatWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
 
         case WM_KEYDOWN:
+            if (wParam == VK_ESCAPE) {
+                if (m_visible) {
+                    Hide();
+                    return 0; // consume ESC only when the chat is open
+                }
+                break; // if chat isn’t open, pass it through
+            }
+
             if (m_buffer) m_buffer->OnKeyDown(wParam);
             InvalidateRect(m_hWnd, nullptr, TRUE);
             return 0;
