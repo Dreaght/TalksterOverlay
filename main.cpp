@@ -32,6 +32,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
         App::SetupMatrix(matrix, chat);
         App::SetupMessageSending(sharedBuffer, matrix);
+        sharedBuffer->AddOnSubmitHandler([&](const std::wstring& text) {
+           chat.ToggleVisible();
+        });
 
         if (!App::PromptRoomChoice(matrix)) {
             PostQuitMessage(1);
