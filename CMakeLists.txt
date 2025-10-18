@@ -29,7 +29,11 @@ add_executable(TalksterUnwindowed
         MessageSending.cpp
         MessageSending.h
         RoomPrompt.cpp
-        RoomPrompt.h)
+        RoomPrompt.h
+        window/TrayIcon.cpp
+        window/TrayIcon.h
+        resource.h
+        resources.rc)
 
 # -------------------- Include Directories --------------------
 target_include_directories(TalksterUnwindowed PRIVATE

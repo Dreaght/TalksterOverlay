@@ -1,6 +1,7 @@
 #include "client/MatrixClient.h"
 #include "window/ChatWindow.h"
 #include "window/MessageWindow.h"
+#include "window/TrayIcon.h"
 #include "HotkeyManager.h"
 
 #include "HotkeySetup.h"
@@ -51,6 +52,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     chat.Show();
     messages.Show();
 
+    TrayIcon tray(hInstance, messages.GetHWND());
+
     MSG msg{};
     while (GetMessage(&msg, nullptr, 0, 0)) {
         if (msg.message == WM_HOTKEY) {
@@ -59,6 +62,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
                 case 2: matrix.Stop(); PostQuitMessage(0); break;
                 case 3: chat.Hide(); break;
             }
+        }
+        if (msg.message == WM_APP + 2) {
+            POINT pt = { (LONG)msg.wParam, (LONG)msg.lParam };
+            tray.ShowMenu(pt);
+        }
+        else if (msg.message == WM_COMMAND && LOWORD(msg.wParam) == 1001) {
+            matrix.Stop();
+            PostQuitMessage(0);
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
