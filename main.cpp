@@ -3,6 +3,7 @@
 #include "window/MessageWindow.h"
 #include "window/TrayIcon.h"
 #include "HotkeyManager.h"
+#include "HotkeyRebinder.h"
 
 #include "HotkeySetup.h"
 #include "MessageSending.h"
@@ -67,9 +68,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
             POINT pt = { (LONG)msg.wParam, (LONG)msg.lParam };
             tray.ShowMenu(pt);
         }
-        else if (msg.message == WM_COMMAND && LOWORD(msg.wParam) == 1001) {
-            matrix.Stop();
-            PostQuitMessage(0);
+        else if (msg.message == WM_COMMAND) {
+            switch (LOWORD(msg.wParam)) {
+                case ID_TRAY_QUIT:
+                    matrix.Stop();
+                    PostQuitMessage(0);
+                    break;
+
+                case ID_TRAY_EDIT_BINDINGS: {
+                    HotkeyRebinder rebinder(hInstance, hotkeys);
+                    rebinder.Show();
+
+                    MSG subMsg{};
+                    while (IsWindow(rebinder.GetHWND()) && GetMessage(&subMsg, nullptr, 0, 0)) {
+                        TranslateMessage(&subMsg);
+                        DispatchMessage(&subMsg);
+                    }
+                    break;
+                }
+
+            }
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);

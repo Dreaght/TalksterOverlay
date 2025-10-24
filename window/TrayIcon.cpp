@@ -2,7 +2,6 @@
 #include "../resource.h"
 
 #define WM_TRAYICON (WM_USER + 1)
-#define ID_TRAY_QUIT 1001
 
 static LRESULT CALLBACK TrayWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     TrayIcon* self = reinterpret_cast<TrayIcon*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
@@ -27,7 +26,9 @@ TrayIcon::TrayIcon(HINSTANCE hInstance, HWND target) : targetHwnd(target) {
     SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
     hMenu = CreatePopupMenu();
-    AppendMenuA(hMenu, MF_STRING, ID_TRAY_QUIT, "Quit  -  <CTRL + Q>");
+    AppendMenuA(hMenu, MF_STRING, ID_TRAY_EDIT_BINDINGS, "Edit Key Bindings");
+    AppendMenuA(hMenu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuA(hMenu, MF_STRING, ID_TRAY_QUIT, "Quit  -  <ALT + Q>");
 
     nid.cbSize = sizeof(NOTIFYICONDATAA);
     nid.hWnd = hWnd;

@@ -33,7 +33,9 @@ add_executable(TalksterUnwindowed
         window/TrayIcon.cpp
         window/TrayIcon.h
         resource.h
-        resources.rc)
+        resources.rc
+        HotkeyRebinder.cpp
+        HotkeyRebinder.h)
 
 # -------------------- Include Directories --------------------
 target_include_directories(TalksterUnwindowed PRIVATE

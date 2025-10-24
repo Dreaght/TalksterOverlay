@@ -7,6 +7,10 @@ public:
         return RegisterHotKey(nullptr, id, mod, vk);
     }
     ~HotkeyManager() {
+        UnregisterAll();
+    }
+
+    static void UnregisterAll() {
         UnregisterHotKey(nullptr, 1);
         UnregisterHotKey(nullptr, 2);
         UnregisterHotKey(nullptr, 3);
